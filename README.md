@@ -1,51 +1,35 @@
-# Update Diff Guard (dev / validation build)
+# Update Diff Guard（開発／検証ビルド）
 
-This is a stripped-down build whose only goal is to validate the riskiest
-assumptions in [Spec.md](Spec.md) directly inside Figma, before investing in
-the full tabbed UI:
+これは、フルのタブUIに作り込む前に、[Spec.md](Spec.md) の中で最もリスクの高い前提をFigma上で直接検証するための、機能を絞ったビルドです。
 
-- Does `swapComponent()` on a live instance preserve overrides the way
-  Figma's own "Update" button does?
-- Does `swapComponent()` preserve the node's identity (so a FigJam arrow
-  connector that references this node survives)?
-- Does comparing `importComponentByKeyAsync(key).id` against the instance's
-  current `mainComponent.id` reliably detect "already latest" vs "update
-  available"?
-- Does `exportAsync()` → `pixelmatch` produce a usable Before/After/Diff
-  image set?
+- `swapComponent()` は、実際に配置済みのインスタンスに対して、Figma純正の「Update」ボタンと同じようにオーバーライドを保持してくれるか？
+- `swapComponent()` はノードの同一性を保つか（＝そのノードを参照しているFigJamの矢印コネクタが壊れずに残るか）？
+- `importComponentByKeyAsync(key).id` と、インスタンスの現在の `mainComponent.id` を比較する方法で、「既に最新版」か「更新あり」かを確実に判定できるか？
+- `exportAsync()` → `pixelmatch` という流れで、実用に足るBefore/After/Diff画像が得られるか？
 
-The UI here is intentionally plain (flat list, no tabs/accordion/marking) —
-see Spec.md for the intended final design.
+ここでのUIは意図的にシンプルにしています（タブ・アコーディオン・マーキング機能なし、フラットな一覧のみ）。最終的なUI設計はSpec.mdを参照してください。
 
-## Setup
+## セットアップ
 
 ```bash
 npm install
 npm run build
 ```
 
-`npm run watch` rebuilds on save.
+`npm run watch` を使うと、保存のたびに自動でビルドされます。
 
-## Load into Figma
+## Figmaへの読み込み方
 
-1. Open Figma desktop app.
-2. Menu → Plugins → Development → **Import plugin from manifest…**
-3. Select `manifest.json` in this folder.
-4. Menu → Plugins → Development → **Update Diff Guard (dev)** to run it.
+1. Figmaデスクトップアプリを開く。
+2. メニュー → Plugins → Development → **Import plugin from manifest…**
+3. このフォルダ内の `manifest.json` を選択。
+4. メニュー → Plugins → Development → **Update Diff Guard (dev)** を選んで実行。
 
-Figma reads `dist/code.js` and `dist/ui.html` — rebuild after any source
-change and re-run the plugin (no reimport needed).
+Figmaが実際に読み込むのは `dist/code.js` と `dist/ui.html` です。ソースを変更したら再ビルドし、プラグインを再実行してください（再インポートは不要）。
 
-## What to check while testing
+## 動作確認でチェックすること
 
-1. Select a frame containing an instance of a component whose library has a
-   newer published version, then **Scan**.
-2. Click **差分テスト** (test diff) on a "更新あり" row — confirm the
-   Before/After/Diff thumbnails look right and the diff % matches what you'd
-   expect from the override you changed (e.g. a toggled switch).
-3. If the instance has a FigJam arrow connected to it, click
-   **適用（in-place swap）** and confirm the arrow is still attached
-   afterward (this is the constraint the whole project exists for — see
-   Spec.md §1).
-4. Undo (Ctrl+Z) and confirm the instance and any test artifacts are fully
-   reverted.
+1. ライブラリ側に新しいパブリッシュ版があるコンポーネントのインスタンスを含むフレームを選択し、**Scan** を実行する。
+2. 「更新あり」の行で **差分テスト** ボタンを押す。Before/After/Diffのサムネイルが正しく見えるか、差分率が実際に加えたオーバーライド（例: スイッチのON/OFF切り替え）から予想される内容と一致するかを確認する。
+3. そのインスタンスにFigJamの矢印が接続されている場合、**適用（in-place swap）** ボタンを押し、更新後も矢印が繋がったままかを確認する（これがこのプロジェクト全体の存在理由となる制約。Spec.md §1参照）。
+4. Ctrl+Zで元に戻し、インスタンスとテスト用に作られたノードが完全に復元されるかを確認する。
