@@ -1,6 +1,6 @@
 {
-  "name": "Update Diff Checker (dev)",
-  "id": "local-dev-update-diff-checker",
+  "name": "Update Diff Guard (dev)",
+  "id": "local-dev-update-diff-guard",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",

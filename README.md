@@ -1,4 +1,4 @@
-# Update Diff Checker (dev / validation build)
+# Update Diff Guard (dev / validation build)
 
 This is a stripped-down build whose only goal is to validate the riskiest
 assumptions in [Spec.md](Spec.md) directly inside Figma, before investing in
@@ -31,7 +31,7 @@ npm run build
 1. Open Figma desktop app.
 2. Menu → Plugins → Development → **Import plugin from manifest…**
 3. Select `manifest.json` in this folder.
-4. Menu → Plugins → Development → **Update Diff Checker (dev)** to run it.
+4. Menu → Plugins → Development → **Update Diff Guard (dev)** to run it.
 
 Figma reads `dist/code.js` and `dist/ui.html` — rebuild after any source
 change and re-run the plugin (no reimport needed).

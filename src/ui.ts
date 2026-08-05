@@ -1,4 +1,4 @@
-// Update Diff Checker — UI iframe (browser environment: Canvas, pixelmatch).
+// Update Diff Guard — UI iframe (browser environment: Canvas, pixelmatch).
 // Deliberately plain styling; this build exists to validate the core
 // logic (see code.ts header comment), not to match the polished mockup.
 

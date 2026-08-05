@@ -1,4 +1,4 @@
-// Update Diff Checker — main thread (sandboxed, Figma Document API).
+// Update Diff Guard — main thread (sandboxed, Figma Document API).
 //
 // This is a minimal, validation-focused build. It exists to answer the
 // riskiest technical questions from Spec.md before investing in the full

@@ -1,4 +1,4 @@
-# Figma Plugin: Update Diff Checker — 仕様書
+# Figma Plugin: Update Diff Guard — 仕様書
 
 ## 1. 背景・課題
 
