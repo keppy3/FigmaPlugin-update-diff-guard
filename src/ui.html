@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Roboto, sans-serif;
+    font-size: 12px;
+    color: #1b1b1b;
+    background: #ffffff;
+  }
+  header {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e6e6e6;
+  }
+  h1 {
+    font-size: 12px;
+    margin: 0 0 8px;
+  }
+  .radio-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .radio-row label { cursor: pointer; }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  button.btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #d8d8d8;
+    background: #fff;
+    cursor: pointer;
+  }
+  button.btn:hover { background: #f5f5f5; }
+  button.btn.primary {
+    background: #0c8ce9;
+    border-color: #0c8ce9;
+    color: #fff;
+  }
+  button.btn.primary:hover { background: #0a72bd; }
+  button.btn[disabled] { opacity: 0.5; cursor: default; }
+  #status {
+    font-size: 10.5px;
+    color: #757575;
+  }
+  main {
+    padding: 10px 14px;
+    overflow-y: auto;
+  }
+  .row {
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .row.applied { border-color: #17915c; background: #f0faf4; }
+  .row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .row-name { font-weight: 600; }
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+  .badge.has-update { background: #e9f4fe; color: #0a72bd; }
+  .row-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .row-result { margin-top: 10px; }
+  .thumbs {
+    display: flex;
+    gap: 10px;
+  }
+  .thumbs figure {
+    margin: 0;
+    text-align: center;
+  }
+  .thumbs img {
+    max-width: 110px;
+    max-height: 90px;
+    border: 1px solid #e6e6e6;
+    border-radius: 4px;
+    background: #fafafa;
+  }
+  .thumbs figcaption {
+    font-size: 9.5px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-top: 3px;
+  }
+  .diff-note {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 8px;
+    border-radius: 6px;
+  }
+  .diff-note.ok { background: #e7f7ef; color: #17915c; }
+  .diff-note.warn { background: #fdf1de; color: #a3690a; }
+  .muted { color: #a5a5aa; }
+  details {
+    margin-top: 14px;
+    border-top: 1px solid #e6e6e6;
+    padding-top: 8px;
+  }
+  summary {
+    cursor: pointer;
+    font-size: 10.5px;
+    color: #757575;
+  }
+  #skipList {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    font-size: 10.5px;
+    color: #757575;
+  }
+  #skipList li { padding: 2px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Update Diff Checker — 検証ビルド</h1>
+    <div id="scopeGroup">
+      <div class="radio-row">
+        <input type="radio" name="scope" value="selection" id="scope-selection" checked>
+        <label for="scope-selection">選択したインスタンス（内包コンテナも含む）</label>
+      </div>
+      <div class="radio-row">
+        <input type="radio" name="scope" value="page" id="scope-page">
+        <label for="scope-page">現在のページ</label>
+      </div>
+      <div class="radio-row">
+        <input type="radio" name="scope" value="all" id="scope-all">
+        <label for="scope-all">すべてのページ</label>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="scanBtn">Scan</button>
+      <span id="status">未実行</span>
+    </div>
+  </header>
+  <main>
+    <div id="rowList"></div>
+    <details>
+      <summary>対象外・更新なしの内訳</summary>
+      <ul id="skipList"><li class="muted">Scan未実行</li></ul>
+    </details>
+  </main>
+  <!-- BUNDLED_SCRIPT -->
+</body>
+</html>
