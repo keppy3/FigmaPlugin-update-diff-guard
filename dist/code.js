@@ -112,6 +112,41 @@
     inst.swapComponent(latest);
     figma.ui.postMessage({ type: "applied", id });
   }
+  async function handleMark(id) {
+    const inst = instanceStore.get(id);
+    const latest = latestComponentStore.get(id);
+    if (!inst || !latest) {
+      figma.ui.postMessage({ type: "error", message: `Instance not found for id ${id}` });
+      return;
+    }
+    const parent = inst.parent;
+    if (!parent || !("insertChild" in parent)) {
+      figma.ui.postMessage({ type: "error", message: "Instance has no parent that supports inserting children" });
+      return;
+    }
+    const originalIndex = parent.children.indexOf(inst);
+    const outset = 4;
+    const marker = figma.createRectangle();
+    marker.name = `\u26A0 Diff Marker \u2014 ${inst.name}`;
+    marker.x = inst.x - outset;
+    marker.y = inst.y - outset;
+    marker.resize(inst.width + outset * 2, inst.height + outset * 2);
+    marker.fills = [];
+    marker.strokes = [{ type: "SOLID", color: { r: 0.82, g: 0.27, b: 0.23 } }];
+    marker.strokeWeight = 4;
+    marker.strokeAlign = "OUTSIDE";
+    marker.locked = true;
+    parent.insertChild(originalIndex + 1, marker);
+    const after = inst.clone();
+    after.name = `\u26A0 AFTER PREVIEW\uFF08\u78BA\u8A8D\u5F8C\u306B\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\uFF09\u2014 ${inst.name}`;
+    after.swapComponent(latest);
+    after.x = inst.x + inst.width + 40;
+    after.y = inst.y;
+    parent.insertChild(originalIndex + 2, after);
+    figma.currentPage.selection = [marker, after];
+    figma.viewport.scrollAndZoomIntoView([inst, marker, after]);
+    figma.ui.postMessage({ type: "marked", id });
+  }
   async function handleJump(id) {
     const inst = instanceStore.get(id);
     if (!inst) return;
@@ -126,6 +161,8 @@
         await handleTestDiff(msg.id);
       } else if (msg.type === "apply" && msg.id) {
         await handleApply(msg.id);
+      } else if (msg.type === "mark" && msg.id) {
+        await handleMark(msg.id);
       } else if (msg.type === "jump" && msg.id) {
         await handleJump(msg.id);
       }

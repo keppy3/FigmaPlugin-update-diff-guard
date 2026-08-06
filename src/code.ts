@@ -10,9 +10,13 @@
 //   - Does the importComponentByKeyAsync().id === mainComponent.id check
 //     reliably detect "already latest" vs "update available"?
 //   - Does the exportAsync() -> pixelmatch pipeline produce a sane diff?
+//   - Does the "marking" mechanic (a rectangle overlay + an after-preview
+//     instance placed adjacent in the layer list) behave as Spec.md §6.7
+//     describes, without touching the original instance?
 //
 // See Spec.md for the target design; this file intentionally skips the
-// tabbed UI, marking, and after-instance placement described there.
+// tabbed UI and batch/bulk actions described there — actions here are
+// still triggered one row at a time.
 
 figma.showUI(__html__, { width: 440, height: 640 });
 
@@ -177,6 +181,55 @@ async function handleApply(id: string): Promise<void> {
   figma.ui.postMessage({ type: "applied", id });
 }
 
+async function handleMark(id: string): Promise<void> {
+  const inst = instanceStore.get(id);
+  const latest = latestComponentStore.get(id);
+  if (!inst || !latest) {
+    figma.ui.postMessage({ type: "error", message: `Instance not found for id ${id}` });
+    return;
+  }
+
+  const parent = inst.parent;
+  if (!parent || !("insertChild" in parent)) {
+    figma.ui.postMessage({ type: "error", message: "Instance has no parent that supports inserting children" });
+    return;
+  }
+
+  const originalIndex = parent.children.indexOf(inst);
+
+  // 1. Rectangle marker, outset slightly around the instance. A new node
+  // only — the original instance itself is never touched, so its node id
+  // (and anything referencing it, e.g. a FigJam arrow) stays intact.
+  const outset = 4;
+  const marker = figma.createRectangle();
+  marker.name = `⚠ Diff Marker — ${inst.name}`;
+  marker.x = inst.x - outset;
+  marker.y = inst.y - outset;
+  marker.resize(inst.width + outset * 2, inst.height + outset * 2);
+  marker.fills = [];
+  marker.strokes = [{ type: "SOLID", color: { r: 0.82, g: 0.27, b: 0.23 } }];
+  marker.strokeWeight = 4;
+  marker.strokeAlign = "OUTSIDE";
+  marker.locked = true;
+  parent.insertChild(originalIndex + 1, marker);
+
+  // 2. After-preview instance: a fresh clone (never the candidate used by
+  // handleTestDiff, which is always deleted before this handler could run),
+  // swapped to the latest component, placed to the right of the original
+  // and adjacent to it in the layer list.
+  const after = inst.clone();
+  after.name = `⚠ AFTER PREVIEW（確認後に削除してください）— ${inst.name}`;
+  after.swapComponent(latest);
+  after.x = inst.x + inst.width + 40;
+  after.y = inst.y;
+  parent.insertChild(originalIndex + 2, after);
+
+  figma.currentPage.selection = [marker, after];
+  figma.viewport.scrollAndZoomIntoView([inst, marker, after]);
+
+  figma.ui.postMessage({ type: "marked", id });
+}
+
 async function handleJump(id: string): Promise<void> {
   const inst = instanceStore.get(id);
   if (!inst) return;
@@ -192,6 +245,8 @@ figma.ui.onmessage = async (msg: { type: string; scope?: ScopeMode; id?: string 
       await handleTestDiff(msg.id);
     } else if (msg.type === "apply" && msg.id) {
       await handleApply(msg.id);
+    } else if (msg.type === "mark" && msg.id) {
+      await handleMark(msg.id);
     } else if (msg.type === "jump" && msg.id) {
       await handleJump(msg.id);
     }

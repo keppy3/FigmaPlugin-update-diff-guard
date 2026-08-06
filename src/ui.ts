@@ -79,6 +79,7 @@ function renderRows(): void {
         <button class="btn" data-action="jump" data-id="${row.id}">キャンバスでジャンプ</button>
         <button class="btn" data-action="test-diff" data-id="${row.id}">差分テスト</button>
         <button class="btn primary" data-action="apply" data-id="${row.id}">適用（in-place swap）</button>
+        <button class="btn warn" data-action="mark" data-id="${row.id}">マーキング</button>
       </div>
       <div class="row-result" id="result-${row.id}"></div>
     `;
@@ -97,6 +98,11 @@ function renderRows(): void {
 function setRowResult(id: string, html: string): void {
   const el = document.getElementById(`result-${id}`);
   if (el) el.innerHTML = html;
+}
+
+function appendRowNote(id: string, html: string): void {
+  const el = document.getElementById(`result-${id}`);
+  if (el) el.innerHTML += html;
 }
 
 function dataUrlFromBytes(bytes: Uint8Array): string {
@@ -207,6 +213,9 @@ document.addEventListener("click", (e) => {
   } else if (action === "apply") {
     btn.setAttribute("disabled", "true");
     post({ type: "apply", id });
+  } else if (action === "mark") {
+    btn.setAttribute("disabled", "true");
+    post({ type: "mark", id });
   } else if (action === "jump") {
     post({ type: "jump", id });
   }
@@ -227,6 +236,13 @@ window.onmessage = (event: MessageEvent) => {
     setRowResult(
       msg.id,
       '<div class="diff-note ok">適用しました。Figma上でオーバーライド・矢印コネクタの状態を確認してください。</div>'
+    );
+  } else if (msg.type === "marked") {
+    const el = document.getElementById(`row-${msg.id}`);
+    if (el) el.classList.add("marked");
+    appendRowNote(
+      msg.id,
+      '<div class="diff-note warn">マーキングしました（矩形マーカー＋Afterインスタンスを配置）。元インスタンスは未変更です。Figma上でレイヤーの並びと矢印コネクタの状態を確認してください。</div>'
     );
   } else if (msg.type === "error") {
     setStatus(`エラー: ${msg.message}`);
