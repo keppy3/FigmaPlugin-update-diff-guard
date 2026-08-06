@@ -3,175 +3,288 @@
 <head>
 <meta charset="utf-8" />
 <style>
+  :root {
+    --panel-bg: #ffffff;
+    --panel-border: #e0e0e0;
+    --chrome-bg: #fbfbfb;
+    --text: #1b1b1b;
+    --text-muted: #75757a;
+    --text-faint: #a5a5aa;
+    --accent: #0c8ce9;
+    --accent-strong: #0a72bd;
+    --accent-bg: #e9f4fe;
+    --success: #17915c;
+    --success-bg: #e7f7ef;
+    --warning: #a3690a;
+    --warning-bg: #fdf1de;
+    --warning-strong: #d98a17;
+    --divider: #ededee;
+    --row-hover: #f8f8f9;
+    --danger: #d1453b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --panel-bg: #2b2c2e;
+      --panel-border: #3d3e41;
+      --chrome-bg: #313234;
+      --text: #f1f1f2;
+      --text-muted: #a7a7ad;
+      --text-faint: #7a7a80;
+      --accent: #4db2ff;
+      --accent-strong: #7ccaff;
+      --accent-bg: #123049;
+      --success: #3fd693;
+      --success-bg: #123626;
+      --warning: #f0b452;
+      --warning-bg: #3c2c11;
+      --warning-strong: #f0b452;
+      --divider: #3a3b3e;
+      --row-hover: #313234;
+      --danger: #ff8078;
+    }
+  }
+
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Roboto, sans-serif;
     font-size: 12px;
-    color: #1b1b1b;
-    background: #ffffff;
-  }
-  header {
-    padding: 12px 14px;
-    border-bottom: 1px solid #e6e6e6;
-  }
-  h1 {
-    font-size: 12px;
-    margin: 0 0 8px;
-  }
-  .radio-row {
+    color: var(--text);
+    background: var(--panel-bg);
     display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
+    flex-direction: column;
+    height: 100vh;
   }
-  .radio-row label { cursor: pointer; }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 8px;
+  .hidden { display: none !important; }
+  button:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
   }
-  button.btn {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 6px 10px;
-    border-radius: 6px;
-    border: 1px solid #d8d8d8;
-    background: #fff;
-    cursor: pointer;
+
+  .chrome { background: var(--chrome-bg); border-bottom: 1px solid var(--panel-border); padding: 10px 14px; display: flex; align-items: center; gap: 8px; flex: none; }
+  .chrome-title { font-size: 12px; font-weight: 700; }
+  .chrome-sub { font-size: 10px; color: var(--text-faint); font-weight: 400; margin-left: 6px; }
+
+  .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ---- Setup ---- */
+  .setup { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  .setup-intro { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+  .setup-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .radio-group { display: flex; flex-direction: column; gap: 7px; }
+  .radio-option { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px 10px; border: 1px solid var(--panel-border); border-radius: 8px; cursor: pointer; }
+  .radio-option:hover { background: var(--row-hover); }
+  .radio-option.active { border-color: var(--accent); background: var(--accent-bg); }
+  .radio-row { display: flex; align-items: center; gap: 9px; }
+  .radio-row input[type="radio"] { width: 14px; height: 14px; accent-color: var(--accent); flex: none; cursor: pointer; }
+  .radio-row span { font-size: 12px; font-weight: 600; }
+  .radio-caption { font-size: 10.5px; color: var(--text-muted); margin-left: 23px; }
+  .setup-footnote { font-size: 10.5px; color: var(--text-faint); text-align: center; }
+
+  .btn-big {
+    width: 100%; height: 40px; border-radius: 8px; border: none; cursor: pointer;
+    background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
   }
-  button.btn:hover { background: #f5f5f5; }
-  button.btn.primary {
-    background: #0c8ce9;
-    border-color: #0c8ce9;
-    color: #fff;
+  .btn-big:hover { background: var(--accent-strong); }
+  .btn-big[disabled] { opacity: 0.42; cursor: default; background: var(--text-faint); }
+  .btn-big.marking { background: var(--warning-strong); }
+  .btn-big.marking:hover { background: #b8790c; }
+
+  /* ---- Busy (bulk 更新／マーキング only) ---- */
+  .busy { padding: 30px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+  .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--divider); border-top-color: var(--accent); animation: spin 0.8s linear infinite; flex: none; }
+  .spinner.sm { width: 13px; height: 13px; border-width: 2px; }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; border-top-color: var(--divider); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .busy-label { font-size: 12.5px; font-weight: 700; }
+  .busy-step { font-size: 11px; color: var(--text-muted); min-height: 14px; }
+  .progress-track { width: 100%; height: 4px; border-radius: 3px; background: var(--divider); overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.2s ease; }
+
+  /* ---- Result screen ---- */
+  #resultView { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+
+  .scan-progress { padding: 9px 14px; border-bottom: 1px solid var(--divider); background: var(--accent-bg); display: flex; flex-direction: column; gap: 6px; flex: none; }
+  .scan-progress-row { display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 600; color: var(--accent-strong); }
+  .scan-progress .progress-track { background: color-mix(in srgb, var(--accent) 18%, var(--panel-bg)); height: 3px; }
+  .scan-progress .progress-fill { background: var(--accent); }
+  .scan-cancel-btn {
+    margin-left: auto; padding: 3px 9px; font-size: 10px; font-weight: 600;
+    color: var(--accent-strong); background: var(--panel-bg);
+    border: 1px solid var(--accent); border-radius: 999px; cursor: pointer;
   }
-  button.btn.primary:hover { background: #0a72bd; }
-  button.btn.warn {
-    background: #d98a17;
-    border-color: #d98a17;
-    color: #fff;
+  .scan-cancel-btn:hover { background: var(--row-hover); }
+  .scan-cancel-btn[disabled] { opacity: 0.5; cursor: default; }
+
+  .excluded-details { border-bottom: 1px solid var(--divider); flex: none; }
+  .excluded-details > summary { list-style: none; cursor: pointer; padding: 8px 14px; display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-faint); }
+  .excluded-details > summary::-webkit-details-marker { display: none; }
+  .excluded-details .chevron-sm { width: 10px; height: 10px; margin-left: auto; transition: transform 0.15s ease; }
+  .excluded-details[open] .chevron-sm { transform: rotate(180deg); }
+  .excluded-list { list-style: none; margin: 0; padding: 0 14px 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .excluded-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 10.5px; }
+  .excluded-list .ex-name { font-weight: 600; color: var(--text-muted); flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .excluded-list .ex-reason { color: var(--text-faint); text-align: right; }
+
+  .tabs { display: flex; border-bottom: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
+  .tab { flex: 1; padding: 11px 8px; font-size: 12px; font-weight: 700; text-align: center; background: none; border: none; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab .tab-count { font-weight: 600; color: var(--text-faint); }
+  .tab.active .tab-count { color: var(--accent-strong); }
+
+  .tab-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .tab-panel.hidden { display: none; }
+
+  .row-list { flex: 1; overflow-y: auto; min-height: 0; }
+  .row { border-bottom: 1px solid var(--divider); }
+  .row.enter { animation: rise 0.3s ease; }
+  .row.is-marked { background: color-mix(in srgb, var(--warning) 6%, var(--panel-bg)); }
+  @media (prefers-reduced-motion: reduce) { .row.enter { animation: none; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .row:last-child { border-bottom: none; }
+  .empty-state { padding: 22px 16px; text-align: center; font-size: 11px; color: var(--text-faint); display: flex; align-items: center; justify-content: center; gap: 7px; }
+
+  .row-check { width: 14px; height: 14px; accent-color: var(--accent); flex: none; cursor: pointer; }
+  .row-check[disabled] { cursor: not-allowed; opacity: 0.5; }
+  .row-name { font-size: 12px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .marked-pill { font-size: 9px; font-weight: 700; color: var(--warning-strong); background: var(--warning-bg); padding: 2px 7px; border-radius: 999px; flex: none; }
+  .row-trailing { width: 16px; flex: none; display: flex; align-items: center; justify-content: center; }
+
+  details.row > summary { list-style: none; }
+  details.row > summary::-webkit-details-marker { display: none; }
+  .row-summary { display: flex; align-items: center; gap: 9px; padding: 11px 14px; cursor: pointer; }
+  .chevron { width: 12px; height: 12px; color: var(--text-faint); flex: none; transition: transform 0.15s ease; }
+  details[open] .chevron { transform: rotate(180deg); }
+  @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
+
+  .row-detail { padding: 0 14px 14px 37px; display: flex; flex-direction: column; gap: 10px; }
+  .preview-row { display: flex; align-items: center; gap: 12px; }
+
+  .preview-frame { width: 132px; height: 82px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
+  .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .preview-frame.size-changed { border-style: dashed; border-color: var(--danger); flex-direction: column; gap: 4px; }
+  .preview-frame.size-changed svg { width: 20px; height: 20px; color: var(--danger); }
+  .preview-frame.size-changed span { font-size: 9.5px; color: var(--danger); font-weight: 700; }
+
+  .diff-pct { font-size: 10.5px; font-weight: 700; color: var(--warning-strong); background: var(--warning-bg); border-radius: 5px; padding: 4px 8px; align-self: flex-start; }
+  .preview-caption { font-size: 9.5px; color: var(--text-faint); max-width: 160px; }
+
+  .ghost-btn { font-size: 10.5px; font-weight: 600; color: var(--text); background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 9px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .ghost-btn:hover { background: var(--row-hover); }
+  .ghost-btn[disabled] { opacity: 0.55; cursor: default; background: var(--row-hover); }
+  .ghost-btn svg { width: 11px; height: 11px; }
+  .ghost-btn.accent { color: var(--accent-strong); border-color: var(--accent); }
+  .ghost-btn.warn { color: var(--warning-strong); border-color: var(--warning-strong); }
+  .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .tab-footer { border-top: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
+  .marker-strip { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--divider); font-size: 10.5px; color: var(--text-muted); }
+  .marker-strip svg { width: 12px; height: 12px; color: var(--warning-strong); flex: none; }
+  .marker-strip b { color: var(--text); }
+  .marker-strip .ghost-btn { margin-left: auto; padding: 4px 8px; font-size: 10px; }
+  .tab-footer-actions { padding: 12px 14px; }
+
+  .toast {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%) translateY(8px);
+    background: var(--text); color: var(--panel-bg); font-size: 11.5px; font-weight: 500;
+    padding: 9px 14px; border-radius: 7px; opacity: 0; pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease; max-width: 90%; text-align: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25); z-index: 50;
   }
-  button.btn.warn:hover { background: #b8790c; }
-  button.btn[disabled] { opacity: 0.5; cursor: default; }
-  #status {
-    font-size: 10.5px;
-    color: #757575;
-  }
-  main {
-    padding: 10px 14px;
-    overflow-y: auto;
-  }
-  .row {
-    border: 1px solid #e6e6e6;
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 10px;
-  }
-  .row.applied { border-color: #17915c; background: #f0faf4; }
-  .row.marked { border-color: #d98a17; background: #fdf6ea; }
-  .row-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .row-name { font-weight: 600; }
-  .badge {
-    font-size: 10px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 999px;
-  }
-  .badge.has-update { background: #e9f4fe; color: #0a72bd; }
-  .row-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-  }
-  .row-result { margin-top: 10px; }
-  .thumbs {
-    display: flex;
-    gap: 10px;
-  }
-  .thumbs figure {
-    margin: 0;
-    text-align: center;
-  }
-  .thumbs img {
-    max-width: 110px;
-    max-height: 90px;
-    border: 1px solid #e6e6e6;
-    border-radius: 4px;
-    background: #fafafa;
-  }
-  .thumbs figcaption {
-    font-size: 9.5px;
-    color: #999;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    margin-top: 3px;
-  }
-  .diff-note {
-    margin-top: 8px;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 6px 8px;
-    border-radius: 6px;
-  }
-  .diff-note.ok { background: #e7f7ef; color: #17915c; }
-  .diff-note.warn { background: #fdf1de; color: #a3690a; }
-  .muted { color: #a5a5aa; }
-  details {
-    margin-top: 14px;
-    border-top: 1px solid #e6e6e6;
-    padding-top: 8px;
-  }
-  summary {
-    cursor: pointer;
-    font-size: 10.5px;
-    color: #757575;
-  }
-  #skipList {
-    list-style: none;
-    margin: 6px 0 0;
-    padding: 0;
-    font-size: 10.5px;
-    color: #757575;
-  }
-  #skipList li { padding: 2px 0; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
-  <header>
-    <h1>Update Diff Guard — 検証ビルド</h1>
-    <div id="scopeGroup">
-      <div class="radio-row">
-        <input type="radio" name="scope" value="selection" id="scope-selection" checked>
-        <label for="scope-selection">選択したインスタンス（内包コンテナも含む）</label>
+  <div class="chrome">
+    <div class="chrome-title">Update Diff Guard<span class="chrome-sub" id="chromeSub">アイドル</span></div>
+  </div>
+
+  <div class="panel-body">
+
+    <!-- ① スキャン前画面 -->
+    <div class="setup" id="setupView">
+      <div class="setup-intro">ライブラリの更新があるインスタンスを検出します。スキャンする範囲を選んでください。</div>
+      <div class="setup-label">スキャン範囲</div>
+      <div class="radio-group" id="radioGroup">
+        <label class="radio-option active" data-scope="selection">
+          <span class="radio-row"><input type="radio" name="scope" value="selection" checked><span>選択範囲</span></span>
+          <span class="radio-caption">選択したフレーム／グループ等の内部も含む</span>
+        </label>
+        <label class="radio-option" data-scope="page">
+          <span class="radio-row"><input type="radio" name="scope" value="page"><span>現在のページ</span></span>
+          <span class="radio-caption">選択状態に関わらずページ全体</span>
+        </label>
+        <label class="radio-option" data-scope="all">
+          <span class="radio-row"><input type="radio" name="scope" value="all"><span>すべてのページ</span></span>
+          <span class="radio-caption">ファイル内の全ページ</span>
+        </label>
       </div>
-      <div class="radio-row">
-        <input type="radio" name="scope" value="page" id="scope-page">
-        <label for="scope-page">現在のページ</label>
+      <button class="btn-big" id="scanBtn">スキャン</button>
+      <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
+    </div>
+
+    <!-- 一括「更新」／一括「マーキング」実行時のみのビジー画面 -->
+    <div class="busy hidden" id="busyView">
+      <div class="spinner"></div>
+      <div class="busy-label" id="busyLabel">更新しています</div>
+      <div class="busy-step" id="busyStep"></div>
+      <div class="progress-track"><div class="progress-fill" id="busyProgress"></div></div>
+    </div>
+
+    <!-- ③ スキャン結果リスト -->
+    <div class="hidden" id="resultView">
+
+      <div class="scan-progress hidden" id="scanProgressStrip">
+        <div class="scan-progress-row">
+          <span class="spinner sm"></span>
+          <span id="scanProgressText">確認中… 0 / 0</span>
+          <button class="scan-cancel-btn" id="cancelScanBtn">キャンセル</button>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="scanProgressFill"></div></div>
       </div>
-      <div class="radio-row">
-        <input type="radio" name="scope" value="all" id="scope-all">
-        <label for="scope-all">すべてのページ</label>
+
+      <details class="excluded-details" id="excludedDetails">
+        <summary>
+          <span id="excludedSummary">対象外を確認中…</span>
+          <svg class="chevron-sm" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>
+        </summary>
+        <ul class="excluded-list" id="excludedList"></ul>
+      </details>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="clean">見た目差分なし <span class="tab-count" id="cleanCount">(0)</span></button>
+        <button class="tab" data-tab="diff">見た目差分あり <span class="tab-count" id="diffCount">(0)</span></button>
+      </div>
+
+      <div class="tab-panel" data-panel="clean">
+        <div class="row-list" id="cleanList"></div>
+        <div class="tab-footer">
+          <div class="tab-footer-actions">
+            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel hidden" data-panel="diff">
+        <div class="row-list" id="diffList"></div>
+        <div class="tab-footer">
+          <div class="marker-strip hidden" id="markerStrip">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/></svg>
+            このページのマーカー: <b id="markerCount">0</b>件
+            <button class="ghost-btn" id="clearMarkersBtn">すべて削除</button>
+          </div>
+          <div class="tab-footer-actions">
+            <button class="btn-big marking" id="markBtn"><span id="markBtnLabel">一括マーキング（0件）</span></button>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="toolbar">
-      <button class="btn primary" id="scanBtn">Scan</button>
-      <span id="status">未実行</span>
-    </div>
-  </header>
-  <main>
-    <div id="rowList"></div>
-    <details>
-      <summary>対象外・更新なしの内訳</summary>
-      <ul id="skipList"><li class="muted">Scan未実行</li></ul>
-    </details>
-  </main>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+
   <script>
 "use strict";
 (() => {
@@ -379,83 +492,42 @@
 
   // src/ui.ts
   var import_pixelmatch = __toESM(require_pixelmatch());
-  var state = { rows: [] };
+  var rows = /* @__PURE__ */ new Map();
+  var cleanIds = [];
+  var diffIds = [];
+  var excluded = [];
+  var checked = {};
+  var markedIds = {};
+  var scanning = false;
+  var scanTotal = 0;
+  var scanDone = 0;
+  var markerCount = 0;
   function post(msg) {
     parent.postMessage({ pluginMessage: msg }, "*");
   }
-  function setStatus(text) {
-    const el = document.getElementById("status");
-    if (el) el.textContent = text;
-  }
-  function statusLabel(status) {
-    switch (status) {
-      case "unpublished":
-        return "\u5BFE\u8C61\u5916\uFF08\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\uFF09";
-      case "import-failed":
-        return "\u30A4\u30F3\u30DD\u30FC\u30C8\u5931\u6557";
-      case "up-to-date":
-        return "\u66F4\u65B0\u306A\u3057";
-      case "has-update":
-        return "\u66F4\u65B0\u3042\u308A";
-    }
+  function $(id) {
+    const el = document.getElementById(id);
+    if (!el) throw new Error(`missing #${id}`);
+    return el;
   }
   function escapeHtml(s) {
-    const map = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    };
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
     return s.replace(/[&<>"']/g, (c) => map[c]);
   }
-  function renderRows() {
-    const counts = {
-      unpublished: 0,
-      "up-to-date": 0,
-      "has-update": 0,
-      "import-failed": 0
-    };
-    for (const row of state.rows) counts[row.status]++;
-    setStatus(
-      `\u691C\u51FA ${state.rows.length}\u4EF6 \u2014 \u66F4\u65B0\u3042\u308A ${counts["has-update"]} / \u66F4\u65B0\u306A\u3057 ${counts["up-to-date"]} / \u5BFE\u8C61\u5916 ${counts.unpublished + counts["import-failed"]}`
-    );
-    const list = document.getElementById("rowList");
-    if (!list) return;
-    list.innerHTML = "";
-    for (const row of state.rows) {
-      if (row.status !== "has-update") continue;
-      const rowEl = document.createElement("div");
-      rowEl.className = "row";
-      rowEl.id = `row-${row.id}`;
-      rowEl.innerHTML = `
-      <div class="row-head">
-        <span class="row-name">${escapeHtml(row.name)}</span>
-        <span class="badge has-update">${statusLabel(row.status)}</span>
-      </div>
-      <div class="row-actions">
-        <button class="btn" data-action="jump" data-id="${row.id}">\u30AD\u30E3\u30F3\u30D0\u30B9\u3067\u30B8\u30E3\u30F3\u30D7</button>
-        <button class="btn" data-action="test-diff" data-id="${row.id}">\u5DEE\u5206\u30C6\u30B9\u30C8</button>
-        <button class="btn primary" data-action="apply" data-id="${row.id}">\u9069\u7528\uFF08in-place swap\uFF09</button>
-        <button class="btn warn" data-action="mark" data-id="${row.id}">\u30DE\u30FC\u30AD\u30F3\u30B0</button>
-      </div>
-      <div class="row-result" id="result-${row.id}"></div>
-    `;
-      list.appendChild(rowEl);
-    }
-    const skipped = state.rows.filter((r) => r.status !== "has-update");
-    const skipList = document.getElementById("skipList");
-    if (skipList) {
-      skipList.innerHTML = skipped.length ? skipped.map((r) => `<li>${escapeHtml(r.name)} \u2014 ${statusLabel(r.status)}</li>`).join("") : '<li class="muted">\u306A\u3057</li>';
-    }
+  var views = { setup: $("setupView"), busy: $("busyView"), result: $("resultView") };
+  function show(name) {
+    Object.keys(views).forEach((k) => views[k].classList.toggle("hidden", k !== name));
   }
-  function setRowResult(id, html) {
-    const el = document.getElementById(`result-${id}`);
-    if (el) el.innerHTML = html;
+  function setChromeSub(text) {
+    $("chromeSub").textContent = text;
   }
-  function appendRowNote(id, html) {
-    const el = document.getElementById(`result-${id}`);
-    if (el) el.innerHTML += html;
+  var toastTimer;
+  function showToast(msg) {
+    const toast = $("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2600);
   }
   function dataUrlFromBytes(bytes) {
     let binary = "";
@@ -488,97 +560,351 @@
       img.src = url;
     });
   }
-  async function handleDiffImages(msg) {
-    const beforeUrl = dataUrlFromBytes(msg.before);
-    const afterUrl = dataUrlFromBytes(msg.after);
-    const thumbs = (extra) => `
-    <div class="thumbs">
-      <figure><img src="${beforeUrl}"><figcaption>Before</figcaption></figure>
-      <figure><img src="${afterUrl}"><figcaption>After</figcaption></figure>
-      ${extra}
-    </div>`;
-    if (msg.sizeChanged) {
-      setRowResult(msg.id, `${thumbs("")}<div class="diff-note warn">\u30B5\u30A4\u30BA\u304C\u5909\u66F4\u3055\u308C\u307E\u3057\u305F\uFF08\u30D4\u30AF\u30BB\u30EB\u6BD4\u8F03\u306F\u30B9\u30AD\u30C3\u30D7\uFF09</div>`);
-      return;
+  async function processDiff(msg) {
+    if (msg.sizeChanged || !msg.before || !msg.after) {
+      return { id: msg.id, name: msg.name, status: "size-changed" };
     }
     const before = await loadImageData(msg.before);
     const after = await loadImageData(msg.after);
     if (before.width !== after.width || before.height !== after.height) {
-      setRowResult(msg.id, `${thumbs("")}<div class="diff-note warn">\u753B\u50CF\u30B5\u30A4\u30BA\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093\uFF08\u30D4\u30AF\u30BB\u30EB\u6BD4\u8F03\u306F\u30B9\u30AD\u30C3\u30D7\uFF09</div>`);
-      return;
+      return { id: msg.id, name: msg.name, status: "size-changed" };
     }
     const { width, height } = before;
     const diffCanvas = document.createElement("canvas");
     diffCanvas.width = width;
     diffCanvas.height = height;
     const diffCtx = diffCanvas.getContext("2d");
-    if (!diffCtx) return;
     const diffImageData = diffCtx.createImageData(width, height);
     const numDiffPixels = (0, import_pixelmatch.default)(before.data.data, after.data.data, diffImageData.data, width, height, {
       threshold: 0.1
     });
-    diffCtx.putImageData(diffImageData, 0, 0);
-    const diffPercent = (numDiffPixels / (width * height) * 100).toFixed(2);
-    const diffUrl = diffCanvas.toDataURL("image/png");
-    const isClean = numDiffPixels === 0;
-    const diffFigure = `<figure><img src="${diffUrl}"><figcaption>Diff</figcaption></figure>`;
-    setRowResult(
-      msg.id,
-      `${thumbs(diffFigure)}<div class="diff-note ${isClean ? "ok" : "warn"}">${isClean ? "\u5DEE\u5206\u306A\u3057" : `\u5DEE\u5206\u3042\u308A \u2014 ${diffPercent}% (${numDiffPixels}px)`}</div>`
-    );
-  }
-  var _a;
-  (_a = document.getElementById("scanBtn")) == null ? void 0 : _a.addEventListener("click", () => {
-    const checked = document.querySelector('input[name="scope"]:checked');
-    const scope = checked ? checked.value : "selection";
-    setStatus("Scan\u4E2D\u2026");
-    post({ type: "scan", scope });
-  });
-  document.addEventListener("click", (e) => {
-    const target = e.target;
-    const btn = target.closest("button[data-action]");
-    if (!btn) return;
-    const action = btn.getAttribute("data-action");
-    const id = btn.getAttribute("data-id");
-    if (!id) return;
-    if (action === "test-diff") {
-      setRowResult(id, '<span class="muted">\u6BD4\u8F03\u4E2D\u2026</span>');
-      post({ type: "test-diff", id });
-    } else if (action === "apply") {
-      btn.setAttribute("disabled", "true");
-      post({ type: "apply", id });
-    } else if (action === "mark") {
-      btn.setAttribute("disabled", "true");
-      post({ type: "mark", id });
-    } else if (action === "jump") {
-      post({ type: "jump", id });
+    if (numDiffPixels === 0) {
+      return { id: msg.id, name: msg.name, status: "clean", imageUrl: dataUrlFromBytes(msg.after) };
     }
+    diffCtx.putImageData(diffImageData, 0, 0);
+    const diffPercent = numDiffPixels / (width * height) * 100;
+    return { id: msg.id, name: msg.name, status: "diff", diffPercent, imageUrl: diffCanvas.toDataURL("image/png") };
+  }
+  $("radioGroup").addEventListener("change", (e) => {
+    const target = e.target;
+    if (target.name !== "scope") return;
+    document.querySelectorAll(".radio-option").forEach((opt) => {
+      opt.classList.toggle("active", opt.getAttribute("data-scope") === target.value);
+    });
+  });
+  $("scanBtn").addEventListener("click", () => {
+    const checkedRadio = document.querySelector('input[name="scope"]:checked');
+    post({ type: "scan", scope: checkedRadio ? checkedRadio.value : "selection" });
+  });
+  $("cancelScanBtn").addEventListener("click", (e) => {
+    e.currentTarget.disabled = true;
+    post({ type: "cancel-scan" });
+  });
+  function onScanStarted(total) {
+    rows.clear();
+    cleanIds = [];
+    diffIds = [];
+    excluded = [];
+    Object.keys(checked).forEach((k) => delete checked[k]);
+    Object.keys(markedIds).forEach((k) => delete markedIds[k]);
+    scanning = true;
+    scanTotal = total;
+    scanDone = 0;
+    show("result");
+    $("scanProgressStrip").classList.remove("hidden");
+    $("cancelScanBtn").disabled = false;
+    updateScanProgress();
+    renderExcludedSummary();
+    renderTabs();
+    setChromeSub("\u30B9\u30AD\u30E3\u30F3\u4E2D\u2026");
+  }
+  function updateScanProgress() {
+    $("scanProgressText").textContent = `\u78BA\u8A8D\u4E2D\u2026 ${scanDone} / ${scanTotal}`;
+    $("scanProgressFill").style.width = scanTotal ? `${Math.round(scanDone / scanTotal * 100)}%` : "0%";
+  }
+  function onScanExcluded(name, reason) {
+    excluded.push({ name, reason });
+    scanDone++;
+    updateScanProgress();
+    renderExcludedSummary();
+  }
+  async function onScanItemResult(msg) {
+    const row = await processDiff(msg);
+    rows.set(row.id, row);
+    if (row.status === "clean") {
+      cleanIds.push(row.id);
+    } else {
+      diffIds.push(row.id);
+    }
+    checked[row.id] = true;
+    scanDone++;
+    updateScanProgress();
+    renderTabs(row.id);
+  }
+  function onScanFinished(cancelled) {
+    scanning = false;
+    $("scanProgressStrip").classList.add("hidden");
+    if (cancelled) {
+      show("setup");
+      setChromeSub("\u30A2\u30A4\u30C9\u30EB");
+      showToast("\u30B9\u30AD\u30E3\u30F3\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
+    } else {
+      setChromeSub("\u691C\u51FA\u5B8C\u4E86");
+      renderTabs();
+    }
+  }
+  async function onRetryDiffResult(msg) {
+    var _a;
+    const oldStatus = (_a = rows.get(msg.id)) == null ? void 0 : _a.status;
+    const newRow = await processDiff(msg);
+    rows.set(newRow.id, newRow);
+    const oldIsClean = oldStatus === "clean";
+    const newIsClean = newRow.status === "clean";
+    if (oldIsClean !== newIsClean) {
+      if (oldIsClean) cleanIds = cleanIds.filter((x) => x !== newRow.id);
+      else diffIds = diffIds.filter((x) => x !== newRow.id);
+      if (newIsClean) cleanIds.push(newRow.id);
+      else diffIds.push(newRow.id);
+    }
+    renderTabs();
+    showToast("\u518D\u6BD4\u8F03\u3057\u307E\u3057\u305F");
+  }
+  function renderExcludedSummary() {
+    $("excludedSummary").textContent = scanning ? `\u5BFE\u8C61\u5916\u3092\u78BA\u8A8D\u4E2D\u2026\uFF08\u73FE\u5728 ${excluded.length}\u4EF6\uFF09` : `\u5BFE\u8C61\u5916 ${excluded.length}\u4EF6\u3092\u9664\u5916\u6E08\u307F`;
+    $("excludedList").innerHTML = excluded.map(
+      (e) => `<li><span class="ex-name" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}</span><span class="ex-reason">${escapeHtml(e.reason)}</span></li>`
+    ).join("") || '<li class="muted">\u306A\u3057</li>';
+  }
+  document.querySelectorAll(".tab").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tabBtn));
+      const name = tabBtn.getAttribute("data-tab");
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        p.classList.toggle("hidden", p.getAttribute("data-panel") !== name);
+      });
+    });
+  });
+  function jumpBtnHtml(id) {
+    return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>\u30AD\u30E3\u30F3\u30D0\u30B9\u3067\u30B8\u30E3\u30F3\u30D7</button>`;
+  }
+  function previewHtml(row) {
+    if (row.status === "size-changed") {
+      return `<div class="preview-frame size-changed"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3"/></svg><span>\u30B5\u30A4\u30BA\u5909\u66F4</span></div>`;
+    }
+    return `<div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div>`;
+  }
+  function rowHtml(id, kind, justEntered) {
+    const row = rows.get(id);
+    if (!row) return "";
+    const marked = kind === "diff" && markedIds[id];
+    let caption;
+    if (kind === "clean") caption = "\u66F4\u65B0\u5F8C\u306E\u898B\u305F\u76EE\uFF08\u5DEE\u5206\u306A\u3057\u306E\u305F\u3081Before\u3068\u540C\u4E00\uFF09";
+    else if (row.status === "size-changed") caption = "\u30B5\u30A4\u30BA\u304C\u5909\u66F4\u3055\u308C\u305F\u305F\u3081\u3001\u30D4\u30AF\u30BB\u30EB\u6BD4\u8F03\u3092\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3057\u305F";
+    else caption = "pixelmatch\u306E\u5DEE\u5206\u753B\u50CF\uFF08\u526F\u7523\u7269\uFF09\u3092\u305D\u306E\u307E\u307E\u8868\u793A";
+    const pctBadge = row.status === "diff" && row.diffPercent !== void 0 ? `<span class="diff-pct">\u5DEE\u5206 ${row.diffPercent.toFixed(1)}%</span>` : "";
+    let rowButtons;
+    if (kind === "clean") {
+      rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn accent" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>`;
+    } else if (marked) {
+      rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn" disabled>\u2713 \u30DE\u30FC\u30AD\u30F3\u30B0\u6E08\u307F</button></div>`;
+    } else {
+      rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn" data-retry="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 1 1.5 3.6M3 8V4M3 8h4"/></svg>\u518D\u6BD4\u8F03</button><button class="ghost-btn warn" data-individual-mark="${id}">\u30DE\u30FC\u30AD\u30F3\u30B0\u3059\u308B</button></div>`;
+    }
+    const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${marked ? "disabled" : checked[id] ? "checked" : ""}>`;
+    const markedPill = marked ? '<span class="marked-pill">\u30DE\u30FC\u30AD\u30F3\u30B0\u6E08\u307F</span>' : "";
+    return `<details class="row${justEntered ? " enter" : ""}${marked ? " is-marked" : ""}" data-id="${id}">
+    <summary class="row-summary">
+      ${checkbox}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      ${markedPill}
+      <span class="row-trailing"><svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></span>
+    </summary>
+    <div class="row-detail">
+      <div class="preview-row">${previewHtml(row)}<div style="display:flex;flex-direction:column;gap:6px;">${pctBadge}<span class="preview-caption">${caption}</span></div></div>
+      ${rowButtons}
+    </div>
+  </details>`;
+  }
+  function emptyState(kind) {
+    if (scanning) return '<div class="empty-state"><span class="spinner sm"></span>\u78BA\u8A8D\u4E2D\u2026</div>';
+    return `<div class="empty-state">${kind === "clean" ? "\u898B\u305F\u76EE\u5DEE\u5206\u306A\u3057\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093" : "\u898B\u305F\u76EE\u5DEE\u5206\u3042\u308A\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093"}</div>`;
+  }
+  function renderTabs(justEnteredId) {
+    $("cleanCount").textContent = `(${cleanIds.length})`;
+    $("diffCount").textContent = `(${diffIds.length})`;
+    $("cleanList").innerHTML = cleanIds.length ? cleanIds.map((id) => rowHtml(id, "clean", id === justEnteredId)).join("") : emptyState("clean");
+    $("diffList").innerHTML = diffIds.length ? diffIds.map((id) => rowHtml(id, "diff", id === justEnteredId)).join("") : emptyState("diff");
+    document.querySelectorAll("#resultView .row-check").forEach((cb) => {
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", (e) => {
+        const id = e.target.getAttribute("data-id");
+        checked[id] = e.target.checked;
+        updateFooterButtons();
+      });
+    });
+    document.querySelectorAll("#resultView [data-jump]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        post({ type: "jump", id: btn.getAttribute("data-jump") });
+      });
+    });
+    document.querySelectorAll("#resultView [data-retry]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        post({ type: "retry-diff", id: btn.getAttribute("data-retry") });
+      });
+    });
+    document.querySelectorAll("#resultView [data-individual-update]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = "\u66F4\u65B0\u4E2D\u2026";
+        post({ type: "apply", id: btn.getAttribute("data-individual-update") });
+      });
+    });
+    document.querySelectorAll("#resultView [data-individual-mark]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = "\u30DE\u30FC\u30AD\u30F3\u30B0\u4E2D\u2026";
+        post({ type: "mark", id: btn.getAttribute("data-individual-mark") });
+      });
+    });
+    updateFooterButtons();
+  }
+  function updateFooterButtons() {
+    const cleanChecked = cleanIds.filter((id) => checked[id]).length;
+    const diffChecked = diffIds.filter((id) => checked[id] && !markedIds[id]).length;
+    $("updateBtnLabel").textContent = `\u4E00\u62EC\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
+    $("updateBtn").disabled = cleanChecked === 0;
+    $("markBtnLabel").textContent = `\u4E00\u62EC\u30DE\u30FC\u30AD\u30F3\u30B0\uFF08${diffChecked}\u4EF6\uFF09`;
+    $("markBtn").disabled = diffChecked === 0;
+  }
+  function showBulkBusy(label) {
+    show("busy");
+    $("busyLabel").textContent = label;
+    $("busyStep").textContent = "";
+    $("busyProgress").style.width = "0%";
+    setChromeSub(`${label}\u2026`);
+  }
+  function onBulkProgress(label, name, index, total) {
+    $("busyLabel").textContent = label;
+    $("busyStep").textContent = `${name} (${index} / ${total})`;
+    $("busyProgress").style.width = `${Math.round(index / total * 100)}%`;
+  }
+  $("updateBtn").addEventListener("click", () => {
+    const targets = cleanIds.filter((id) => checked[id]);
+    if (targets.length === 0) return;
+    showBulkBusy("\u66F4\u65B0\u3057\u3066\u3044\u307E\u3059");
+    post({ type: "apply-bulk", ids: targets });
+  });
+  $("markBtn").addEventListener("click", () => {
+    const targets = diffIds.filter((id) => checked[id] && !markedIds[id]);
+    if (targets.length === 0) return;
+    showBulkBusy("\u30DE\u30FC\u30AD\u30F3\u30B0\u3057\u3066\u3044\u307E\u3059");
+    post({ type: "mark-bulk", ids: targets });
+  });
+  function onApplied(id) {
+    var _a;
+    const row = rows.get(id);
+    cleanIds = cleanIds.filter((x) => x !== id);
+    rows.delete(id);
+    delete checked[id];
+    renderTabs();
+    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u3092\u66F4\u65B0\u3057\u307E\u3057\u305F`);
+  }
+  function onApplyBulkDone(ids) {
+    ids.forEach((id) => {
+      cleanIds = cleanIds.filter((x) => x !== id);
+      rows.delete(id);
+      delete checked[id];
+    });
+    renderTabs();
+    show("result");
+    showToast(`${ids.length}\u4EF6\u3092\u66F4\u65B0\u3057\u307E\u3057\u305F`);
+    setChromeSub("\u691C\u51FA\u5B8C\u4E86");
+  }
+  function onMarked(id) {
+    var _a;
+    const row = rows.get(id);
+    markedIds[id] = true;
+    checked[id] = false;
+    renderTabs();
+    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u3092\u30DE\u30FC\u30AD\u30F3\u30B0\u3057\u307E\u3057\u305F`);
+  }
+  function onMarkBulkDone(ids) {
+    ids.forEach((id) => {
+      markedIds[id] = true;
+      checked[id] = false;
+    });
+    renderTabs();
+    show("result");
+    showToast(`${ids.length}\u4EF6\u3092\u30DE\u30FC\u30AD\u30F3\u30B0\u3057\u307E\u3057\u305F`);
+    setChromeSub("\u691C\u51FA\u5B8C\u4E86");
+  }
+  function updateMarkerStrip() {
+    const strip = $("markerStrip");
+    strip.classList.toggle("hidden", markerCount === 0);
+    $("markerCount").textContent = String(markerCount);
+  }
+  function setMarkerCount(count) {
+    markerCount = count;
+    updateMarkerStrip();
+  }
+  $("clearMarkersBtn").addEventListener("click", () => {
+    post({ type: "clear-markers" });
   });
   window.onmessage = (event) => {
-    var _a2;
-    const msg = (_a2 = event.data) == null ? void 0 : _a2.pluginMessage;
+    var _a;
+    const msg = (_a = event.data) == null ? void 0 : _a.pluginMessage;
     if (!msg) return;
-    if (msg.type === "scan-result") {
-      state.rows = msg.rows;
-      renderRows();
-    } else if (msg.type === "diff-images") {
-      void handleDiffImages(msg);
-    } else if (msg.type === "applied") {
-      const el = document.getElementById(`row-${msg.id}`);
-      if (el) el.classList.add("applied");
-      setRowResult(
-        msg.id,
-        '<div class="diff-note ok">\u9069\u7528\u3057\u307E\u3057\u305F\u3002Figma\u4E0A\u3067\u30AA\u30FC\u30D0\u30FC\u30E9\u30A4\u30C9\u30FB\u77E2\u5370\u30B3\u30CD\u30AF\u30BF\u306E\u72B6\u614B\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>'
-      );
-    } else if (msg.type === "marked") {
-      const el = document.getElementById(`row-${msg.id}`);
-      if (el) el.classList.add("marked");
-      appendRowNote(
-        msg.id,
-        '<div class="diff-note warn">\u30DE\u30FC\u30AD\u30F3\u30B0\u3057\u307E\u3057\u305F\uFF08\u77E9\u5F62\u30DE\u30FC\u30AB\u30FC\uFF0BAfter\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\uFF09\u3002\u5143\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306F\u672A\u5909\u66F4\u3067\u3059\u3002Figma\u4E0A\u3067\u30EC\u30A4\u30E4\u30FC\u306E\u4E26\u3073\u3068\u77E2\u5370\u30B3\u30CD\u30AF\u30BF\u306E\u72B6\u614B\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>'
-      );
-    } else if (msg.type === "error") {
-      setStatus(`\u30A8\u30E9\u30FC: ${msg.message}`);
+    switch (msg.type) {
+      case "scan-started":
+        onScanStarted(msg.total);
+        break;
+      case "scan-item-excluded":
+        onScanExcluded(msg.name, msg.reason);
+        break;
+      case "scan-item-result":
+        void onScanItemResult(msg);
+        break;
+      case "scan-done":
+        onScanFinished(false);
+        break;
+      case "scan-cancelled":
+        onScanFinished(true);
+        break;
+      case "applied":
+        onApplied(msg.id);
+        break;
+      case "apply-bulk-progress":
+        onBulkProgress("\u66F4\u65B0\u3057\u3066\u3044\u307E\u3059", msg.name, msg.index, msg.total);
+        break;
+      case "apply-bulk-done":
+        onApplyBulkDone(msg.ids);
+        break;
+      case "marked":
+        onMarked(msg.id);
+        break;
+      case "mark-bulk-progress":
+        onBulkProgress("\u30DE\u30FC\u30AD\u30F3\u30B0\u3057\u3066\u3044\u307E\u3059", msg.name, msg.index, msg.total);
+        break;
+      case "mark-bulk-done":
+        onMarkBulkDone(msg.ids);
+        break;
+      case "retry-diff-result":
+        void onRetryDiffResult(msg);
+        break;
+      case "markers-cleared":
+        showToast(`\u30DE\u30FC\u30AB\u30FC\u3068After\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092${msg.count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
+        break;
+      case "marker-count":
+        setMarkerCount(msg.count);
+        break;
+      case "error":
+        showToast(`\u30A8\u30E9\u30FC: ${msg.message}`);
+        break;
     }
   };
 })();
