@@ -11,7 +11,7 @@ const codeOptions = {
   bundle: true,
   outfile: "dist/code.js",
   format: "iife",
-  target: "es2019",
+  target: "es2017",
   logLevel: "info",
 };
 
@@ -21,7 +21,7 @@ const uiOptions = {
   bundle: true,
   write: false,
   format: "iife",
-  target: "es2019",
+  target: "es2017",
   logLevel: "info",
 };
 

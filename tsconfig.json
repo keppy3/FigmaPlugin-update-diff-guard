@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM"],
+    "target": "ES2017",
+    "lib": ["ES2017", "DOM"],
     "moduleResolution": "node",
     "module": "ESNext",
     "strict": true,
