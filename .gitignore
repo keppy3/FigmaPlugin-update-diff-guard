@@ -1,3 +1,5 @@
 node_modules/
-dist/
 *.log
+
+# dist/ is intentionally committed (not ignored): the test machine has no
+# Node/npm, so it needs to run straight off a `git pull` with no build step.

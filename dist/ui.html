@@ -1,0 +1,566 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Roboto, sans-serif;
+    font-size: 12px;
+    color: #1b1b1b;
+    background: #ffffff;
+  }
+  header {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e6e6e6;
+  }
+  h1 {
+    font-size: 12px;
+    margin: 0 0 8px;
+  }
+  .radio-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .radio-row label { cursor: pointer; }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  button.btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #d8d8d8;
+    background: #fff;
+    cursor: pointer;
+  }
+  button.btn:hover { background: #f5f5f5; }
+  button.btn.primary {
+    background: #0c8ce9;
+    border-color: #0c8ce9;
+    color: #fff;
+  }
+  button.btn.primary:hover { background: #0a72bd; }
+  button.btn[disabled] { opacity: 0.5; cursor: default; }
+  #status {
+    font-size: 10.5px;
+    color: #757575;
+  }
+  main {
+    padding: 10px 14px;
+    overflow-y: auto;
+  }
+  .row {
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .row.applied { border-color: #17915c; background: #f0faf4; }
+  .row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .row-name { font-weight: 600; }
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+  }
+  .badge.has-update { background: #e9f4fe; color: #0a72bd; }
+  .row-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .row-result { margin-top: 10px; }
+  .thumbs {
+    display: flex;
+    gap: 10px;
+  }
+  .thumbs figure {
+    margin: 0;
+    text-align: center;
+  }
+  .thumbs img {
+    max-width: 110px;
+    max-height: 90px;
+    border: 1px solid #e6e6e6;
+    border-radius: 4px;
+    background: #fafafa;
+  }
+  .thumbs figcaption {
+    font-size: 9.5px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-top: 3px;
+  }
+  .diff-note {
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 8px;
+    border-radius: 6px;
+  }
+  .diff-note.ok { background: #e7f7ef; color: #17915c; }
+  .diff-note.warn { background: #fdf1de; color: #a3690a; }
+  .muted { color: #a5a5aa; }
+  details {
+    margin-top: 14px;
+    border-top: 1px solid #e6e6e6;
+    padding-top: 8px;
+  }
+  summary {
+    cursor: pointer;
+    font-size: 10.5px;
+    color: #757575;
+  }
+  #skipList {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    font-size: 10.5px;
+    color: #757575;
+  }
+  #skipList li { padding: 2px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Update Diff Guard — 検証ビルド</h1>
+    <div id="scopeGroup">
+      <div class="radio-row">
+        <input type="radio" name="scope" value="selection" id="scope-selection" checked>
+        <label for="scope-selection">選択したインスタンス（内包コンテナも含む）</label>
+      </div>
+      <div class="radio-row">
+        <input type="radio" name="scope" value="page" id="scope-page">
+        <label for="scope-page">現在のページ</label>
+      </div>
+      <div class="radio-row">
+        <input type="radio" name="scope" value="all" id="scope-all">
+        <label for="scope-all">すべてのページ</label>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" id="scanBtn">Scan</button>
+      <span id="status">未実行</span>
+    </div>
+  </header>
+  <main>
+    <div id="rowList"></div>
+    <details>
+      <summary>対象外・更新なしの内訳</summary>
+      <ul id="skipList"><li class="muted">Scan未実行</li></ul>
+    </details>
+  </main>
+  <script>
+"use strict";
+(() => {
+  var __create = Object.create;
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
+
+  // node_modules/pixelmatch/index.js
+  var require_pixelmatch = __commonJS({
+    "node_modules/pixelmatch/index.js"(exports, module) {
+      "use strict";
+      module.exports = pixelmatch2;
+      var defaultOptions = {
+        threshold: 0.1,
+        // matching threshold (0 to 1); smaller is more sensitive
+        includeAA: false,
+        // whether to skip anti-aliasing detection
+        alpha: 0.1,
+        // opacity of original image in diff output
+        aaColor: [255, 255, 0],
+        // color of anti-aliased pixels in diff output
+        diffColor: [255, 0, 0],
+        // color of different pixels in diff output
+        diffColorAlt: null,
+        // whether to detect dark on light differences between img1 and img2 and set an alternative color to differentiate between the two
+        diffMask: false
+        // draw the diff over a transparent background (a mask)
+      };
+      function pixelmatch2(img1, img2, output, width, height, options) {
+        if (!isPixelData(img1) || !isPixelData(img2) || output && !isPixelData(output))
+          throw new Error("Image data: Uint8Array, Uint8ClampedArray or Buffer expected.");
+        if (img1.length !== img2.length || output && output.length !== img1.length)
+          throw new Error("Image sizes do not match.");
+        if (img1.length !== width * height * 4) throw new Error("Image data size does not match width/height.");
+        options = Object.assign({}, defaultOptions, options);
+        const len = width * height;
+        const a32 = new Uint32Array(img1.buffer, img1.byteOffset, len);
+        const b32 = new Uint32Array(img2.buffer, img2.byteOffset, len);
+        let identical = true;
+        for (let i = 0; i < len; i++) {
+          if (a32[i] !== b32[i]) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) {
+          if (output && !options.diffMask) {
+            for (let i = 0; i < len; i++) drawGrayPixel(img1, 4 * i, options.alpha, output);
+          }
+          return 0;
+        }
+        const maxDelta = 35215 * options.threshold * options.threshold;
+        let diff = 0;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const pos = (y * width + x) * 4;
+            const delta = colorDelta(img1, img2, pos, pos);
+            if (Math.abs(delta) > maxDelta) {
+              if (!options.includeAA && (antialiased(img1, x, y, width, height, img2) || antialiased(img2, x, y, width, height, img1))) {
+                if (output && !options.diffMask) drawPixel(output, pos, ...options.aaColor);
+              } else {
+                if (output) {
+                  drawPixel(output, pos, ...delta < 0 && options.diffColorAlt || options.diffColor);
+                }
+                diff++;
+              }
+            } else if (output) {
+              if (!options.diffMask) drawGrayPixel(img1, pos, options.alpha, output);
+            }
+          }
+        }
+        return diff;
+      }
+      function isPixelData(arr) {
+        return ArrayBuffer.isView(arr) && arr.constructor.BYTES_PER_ELEMENT === 1;
+      }
+      function antialiased(img, x1, y1, width, height, img2) {
+        const x0 = Math.max(x1 - 1, 0);
+        const y0 = Math.max(y1 - 1, 0);
+        const x2 = Math.min(x1 + 1, width - 1);
+        const y2 = Math.min(y1 + 1, height - 1);
+        const pos = (y1 * width + x1) * 4;
+        let zeroes = x1 === x0 || x1 === x2 || y1 === y0 || y1 === y2 ? 1 : 0;
+        let min = 0;
+        let max = 0;
+        let minX, minY, maxX, maxY;
+        for (let x = x0; x <= x2; x++) {
+          for (let y = y0; y <= y2; y++) {
+            if (x === x1 && y === y1) continue;
+            const delta = colorDelta(img, img, pos, (y * width + x) * 4, true);
+            if (delta === 0) {
+              zeroes++;
+              if (zeroes > 2) return false;
+            } else if (delta < min) {
+              min = delta;
+              minX = x;
+              minY = y;
+            } else if (delta > max) {
+              max = delta;
+              maxX = x;
+              maxY = y;
+            }
+          }
+        }
+        if (min === 0 || max === 0) return false;
+        return hasManySiblings(img, minX, minY, width, height) && hasManySiblings(img2, minX, minY, width, height) || hasManySiblings(img, maxX, maxY, width, height) && hasManySiblings(img2, maxX, maxY, width, height);
+      }
+      function hasManySiblings(img, x1, y1, width, height) {
+        const x0 = Math.max(x1 - 1, 0);
+        const y0 = Math.max(y1 - 1, 0);
+        const x2 = Math.min(x1 + 1, width - 1);
+        const y2 = Math.min(y1 + 1, height - 1);
+        const pos = (y1 * width + x1) * 4;
+        let zeroes = x1 === x0 || x1 === x2 || y1 === y0 || y1 === y2 ? 1 : 0;
+        for (let x = x0; x <= x2; x++) {
+          for (let y = y0; y <= y2; y++) {
+            if (x === x1 && y === y1) continue;
+            const pos2 = (y * width + x) * 4;
+            if (img[pos] === img[pos2] && img[pos + 1] === img[pos2 + 1] && img[pos + 2] === img[pos2 + 2] && img[pos + 3] === img[pos2 + 3]) zeroes++;
+            if (zeroes > 2) return true;
+          }
+        }
+        return false;
+      }
+      function colorDelta(img1, img2, k, m, yOnly) {
+        let r1 = img1[k + 0];
+        let g1 = img1[k + 1];
+        let b1 = img1[k + 2];
+        let a1 = img1[k + 3];
+        let r2 = img2[m + 0];
+        let g2 = img2[m + 1];
+        let b2 = img2[m + 2];
+        let a2 = img2[m + 3];
+        if (a1 === a2 && r1 === r2 && g1 === g2 && b1 === b2) return 0;
+        if (a1 < 255) {
+          a1 /= 255;
+          r1 = blend(r1, a1);
+          g1 = blend(g1, a1);
+          b1 = blend(b1, a1);
+        }
+        if (a2 < 255) {
+          a2 /= 255;
+          r2 = blend(r2, a2);
+          g2 = blend(g2, a2);
+          b2 = blend(b2, a2);
+        }
+        const y1 = rgb2y(r1, g1, b1);
+        const y2 = rgb2y(r2, g2, b2);
+        const y = y1 - y2;
+        if (yOnly) return y;
+        const i = rgb2i(r1, g1, b1) - rgb2i(r2, g2, b2);
+        const q = rgb2q(r1, g1, b1) - rgb2q(r2, g2, b2);
+        const delta = 0.5053 * y * y + 0.299 * i * i + 0.1957 * q * q;
+        return y1 > y2 ? -delta : delta;
+      }
+      function rgb2y(r, g, b) {
+        return r * 0.29889531 + g * 0.58662247 + b * 0.11448223;
+      }
+      function rgb2i(r, g, b) {
+        return r * 0.59597799 - g * 0.2741761 - b * 0.32180189;
+      }
+      function rgb2q(r, g, b) {
+        return r * 0.21147017 - g * 0.52261711 + b * 0.31114694;
+      }
+      function blend(c, a) {
+        return 255 + (c - 255) * a;
+      }
+      function drawPixel(output, pos, r, g, b) {
+        output[pos + 0] = r;
+        output[pos + 1] = g;
+        output[pos + 2] = b;
+        output[pos + 3] = 255;
+      }
+      function drawGrayPixel(img, i, alpha, output) {
+        const r = img[i + 0];
+        const g = img[i + 1];
+        const b = img[i + 2];
+        const val = blend(rgb2y(r, g, b), alpha * img[i + 3] / 255);
+        drawPixel(output, i, val, val, val);
+      }
+    }
+  });
+
+  // src/ui.ts
+  var import_pixelmatch = __toESM(require_pixelmatch());
+  var state = { rows: [] };
+  function post(msg) {
+    parent.postMessage({ pluginMessage: msg }, "*");
+  }
+  function setStatus(text) {
+    const el = document.getElementById("status");
+    if (el) el.textContent = text;
+  }
+  function statusLabel(status) {
+    switch (status) {
+      case "unpublished":
+        return "\u5BFE\u8C61\u5916\uFF08\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\uFF09";
+      case "import-failed":
+        return "\u30A4\u30F3\u30DD\u30FC\u30C8\u5931\u6557";
+      case "up-to-date":
+        return "\u66F4\u65B0\u306A\u3057";
+      case "has-update":
+        return "\u66F4\u65B0\u3042\u308A";
+    }
+  }
+  function escapeHtml(s) {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    };
+    return s.replace(/[&<>"']/g, (c) => map[c]);
+  }
+  function renderRows() {
+    const counts = {
+      unpublished: 0,
+      "up-to-date": 0,
+      "has-update": 0,
+      "import-failed": 0
+    };
+    for (const row of state.rows) counts[row.status]++;
+    setStatus(
+      `\u691C\u51FA ${state.rows.length}\u4EF6 \u2014 \u66F4\u65B0\u3042\u308A ${counts["has-update"]} / \u66F4\u65B0\u306A\u3057 ${counts["up-to-date"]} / \u5BFE\u8C61\u5916 ${counts.unpublished + counts["import-failed"]}`
+    );
+    const list = document.getElementById("rowList");
+    if (!list) return;
+    list.innerHTML = "";
+    for (const row of state.rows) {
+      if (row.status !== "has-update") continue;
+      const rowEl = document.createElement("div");
+      rowEl.className = "row";
+      rowEl.id = `row-${row.id}`;
+      rowEl.innerHTML = `
+      <div class="row-head">
+        <span class="row-name">${escapeHtml(row.name)}</span>
+        <span class="badge has-update">${statusLabel(row.status)}</span>
+      </div>
+      <div class="row-actions">
+        <button class="btn" data-action="jump" data-id="${row.id}">\u30AD\u30E3\u30F3\u30D0\u30B9\u3067\u30B8\u30E3\u30F3\u30D7</button>
+        <button class="btn" data-action="test-diff" data-id="${row.id}">\u5DEE\u5206\u30C6\u30B9\u30C8</button>
+        <button class="btn primary" data-action="apply" data-id="${row.id}">\u9069\u7528\uFF08in-place swap\uFF09</button>
+      </div>
+      <div class="row-result" id="result-${row.id}"></div>
+    `;
+      list.appendChild(rowEl);
+    }
+    const skipped = state.rows.filter((r) => r.status !== "has-update");
+    const skipList = document.getElementById("skipList");
+    if (skipList) {
+      skipList.innerHTML = skipped.length ? skipped.map((r) => `<li>${escapeHtml(r.name)} \u2014 ${statusLabel(r.status)}</li>`).join("") : '<li class="muted">\u306A\u3057</li>';
+    }
+  }
+  function setRowResult(id, html) {
+    const el = document.getElementById(`result-${id}`);
+    if (el) el.innerHTML = html;
+  }
+  function dataUrlFromBytes(bytes) {
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return `data:image/png;base64,${btoa(binary)}`;
+  }
+  function loadImageData(bytes) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error("2d context unavailable"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve({ data, width: canvas.width, height: canvas.height });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("image decode failed"));
+      };
+      img.src = url;
+    });
+  }
+  async function handleDiffImages(msg) {
+    const beforeUrl = dataUrlFromBytes(msg.before);
+    const afterUrl = dataUrlFromBytes(msg.after);
+    const thumbs = (extra) => `
+    <div class="thumbs">
+      <figure><img src="${beforeUrl}"><figcaption>Before</figcaption></figure>
+      <figure><img src="${afterUrl}"><figcaption>After</figcaption></figure>
+      ${extra}
+    </div>`;
+    if (msg.sizeChanged) {
+      setRowResult(msg.id, `${thumbs("")}<div class="diff-note warn">\u30B5\u30A4\u30BA\u304C\u5909\u66F4\u3055\u308C\u307E\u3057\u305F\uFF08\u30D4\u30AF\u30BB\u30EB\u6BD4\u8F03\u306F\u30B9\u30AD\u30C3\u30D7\uFF09</div>`);
+      return;
+    }
+    const before = await loadImageData(msg.before);
+    const after = await loadImageData(msg.after);
+    if (before.width !== after.width || before.height !== after.height) {
+      setRowResult(msg.id, `${thumbs("")}<div class="diff-note warn">\u753B\u50CF\u30B5\u30A4\u30BA\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093\uFF08\u30D4\u30AF\u30BB\u30EB\u6BD4\u8F03\u306F\u30B9\u30AD\u30C3\u30D7\uFF09</div>`);
+      return;
+    }
+    const { width, height } = before;
+    const diffCanvas = document.createElement("canvas");
+    diffCanvas.width = width;
+    diffCanvas.height = height;
+    const diffCtx = diffCanvas.getContext("2d");
+    if (!diffCtx) return;
+    const diffImageData = diffCtx.createImageData(width, height);
+    const numDiffPixels = (0, import_pixelmatch.default)(before.data.data, after.data.data, diffImageData.data, width, height, {
+      threshold: 0.1
+    });
+    diffCtx.putImageData(diffImageData, 0, 0);
+    const diffPercent = (numDiffPixels / (width * height) * 100).toFixed(2);
+    const diffUrl = diffCanvas.toDataURL("image/png");
+    const isClean = numDiffPixels === 0;
+    const diffFigure = `<figure><img src="${diffUrl}"><figcaption>Diff</figcaption></figure>`;
+    setRowResult(
+      msg.id,
+      `${thumbs(diffFigure)}<div class="diff-note ${isClean ? "ok" : "warn"}">${isClean ? "\u5DEE\u5206\u306A\u3057" : `\u5DEE\u5206\u3042\u308A \u2014 ${diffPercent}% (${numDiffPixels}px)`}</div>`
+    );
+  }
+  var _a;
+  (_a = document.getElementById("scanBtn")) == null ? void 0 : _a.addEventListener("click", () => {
+    const checked = document.querySelector('input[name="scope"]:checked');
+    const scope = checked ? checked.value : "selection";
+    setStatus("Scan\u4E2D\u2026");
+    post({ type: "scan", scope });
+  });
+  document.addEventListener("click", (e) => {
+    const target = e.target;
+    const btn = target.closest("button[data-action]");
+    if (!btn) return;
+    const action = btn.getAttribute("data-action");
+    const id = btn.getAttribute("data-id");
+    if (!id) return;
+    if (action === "test-diff") {
+      setRowResult(id, '<span class="muted">\u6BD4\u8F03\u4E2D\u2026</span>');
+      post({ type: "test-diff", id });
+    } else if (action === "apply") {
+      btn.setAttribute("disabled", "true");
+      post({ type: "apply", id });
+    } else if (action === "jump") {
+      post({ type: "jump", id });
+    }
+  });
+  window.onmessage = (event) => {
+    var _a2;
+    const msg = (_a2 = event.data) == null ? void 0 : _a2.pluginMessage;
+    if (!msg) return;
+    if (msg.type === "scan-result") {
+      state.rows = msg.rows;
+      renderRows();
+    } else if (msg.type === "diff-images") {
+      void handleDiffImages(msg);
+    } else if (msg.type === "applied") {
+      const el = document.getElementById(`row-${msg.id}`);
+      if (el) el.classList.add("applied");
+      setRowResult(
+        msg.id,
+        '<div class="diff-note ok">\u9069\u7528\u3057\u307E\u3057\u305F\u3002Figma\u4E0A\u3067\u30AA\u30FC\u30D0\u30FC\u30E9\u30A4\u30C9\u30FB\u77E2\u5370\u30B3\u30CD\u30AF\u30BF\u306E\u72B6\u614B\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>'
+      );
+    } else if (msg.type === "error") {
+      setStatus(`\u30A8\u30E9\u30FC: ${msg.message}`);
+    }
+  };
+})();
+
+</script>
+</body>
+</html>

@@ -9,23 +9,23 @@
 
 ここでのUIは意図的にシンプルにしています（タブ・アコーディオン・マーキング機能なし、フラットな一覧のみ）。最終的なUI設計はSpec.mdを参照してください。
 
-## セットアップ
+## Figmaへの読み込み方（ビルド不要）
 
-```bash
-npm install
-npm run build
-```
-
-`npm run watch` を使うと、保存のたびに自動でビルドされます。
-
-## Figmaへの読み込み方
+`dist/code.js` と `dist/ui.html`（Figmaが実際に読み込むファイル）は**ビルド済みのものをリポジトリに含めています**。Node.js/npmが入っていないマシンでも、`git clone`（または`git pull`）するだけでそのまま動きます。
 
 1. Figmaデスクトップアプリを開く。
 2. メニュー → Plugins → Development → **Import plugin from manifest…**
 3. このフォルダ内の `manifest.json` を選択。
 4. メニュー → Plugins → Development → **Update Diff Guard (dev)** を選んで実行。
 
-Figmaが実際に読み込むのは `dist/code.js` と `dist/ui.html` です。ソースを変更したら再ビルドし、プラグインを再実行してください（再インポートは不要）。
+## ソースを編集する場合（Node.js/npmが使える環境のみ）
+
+```bash
+npm install
+npm run build
+```
+
+`npm run watch` を使うと、保存のたびに自動でビルドされます。ソースを変更したら再ビルドし、**`dist/code.js` と `dist/ui.html` の変更もあわせてコミット・pushしてください**（ビルドしない環境で `git pull` するだけで最新化できるようにするため）。再ビルド後はプラグインを再実行するだけでよく、Figma側での再インポートは不要です。
 
 ## 動作確認でチェックすること
 
