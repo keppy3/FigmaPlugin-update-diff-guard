@@ -127,11 +127,17 @@ async function handleTestDiff(id: string): Promise<void> {
 
   // clone() inserts the duplicate into the same parent, next to the
   // original, without touching the original at all.
+  //
+  // Deliberately left visible=true here: exportAsync() on a hidden
+  // (visible=false) node has been reported to sometimes render a blank/
+  // transparent image (see Figma forum), which would make every "after"
+  // image a spurious diff against a real "before" image. The candidate
+  // is removed immediately below anyway, so the brief on-canvas presence
+  // during the export await is an acceptable trade-off for correctness.
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
   clone.x = inst.x + inst.width + 40;
   clone.y = inst.y;
-  clone.visible = false;
   clone.swapComponent(latest);
 
   const afterWidth = clone.width;

@@ -85,7 +85,6 @@
     clone.name = `${inst.name} (diff candidate)`;
     clone.x = inst.x + inst.width + 40;
     clone.y = inst.y;
-    clone.visible = false;
     clone.swapComponent(latest);
     const afterWidth = clone.width;
     const afterHeight = clone.height;
