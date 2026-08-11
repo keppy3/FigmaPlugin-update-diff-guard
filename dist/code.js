@@ -65,40 +65,45 @@
     post({ type: "scan-started", total: targets.length });
     for (const inst of targets) {
       if (scanCancelled) break;
-      let main;
       try {
-        main = await inst.getMainComponentAsync();
+        let main;
+        try {
+          main = await inst.getMainComponentAsync();
+        } catch (e) {
+          main = null;
+        }
+        if (!main) {
+          post({ type: "scan-item-excluded", name: inst.name, reason: "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8" });
+          continue;
+        }
+        let latest;
+        try {
+          latest = await figma.importComponentByKeyAsync(main.key);
+        } catch (e) {
+          post({
+            type: "scan-item-excluded",
+            name: inst.name,
+            reason: main.remote ? "\u6700\u65B0\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557" : "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8"
+          });
+          continue;
+        }
+        if (latest.id === main.id) {
+          post({ type: "scan-item-excluded", name: inst.name, reason: "\u65E2\u306B\u6700\u65B0\u7248\u3092\u53C2\u7167" });
+          continue;
+        }
+        if (scanCancelled) break;
+        store.set(inst.id, { instance: inst, latestComponent: latest });
+        await computeAndSendDiff(inst, latest);
       } catch (e) {
-        main = null;
+        store.delete(inst.id);
+        post({ type: "scan-item-excluded", name: inst.name, reason: "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09" });
       }
-      if (!main) {
-        post({ type: "scan-item-excluded", name: inst.name, reason: "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8" });
-        continue;
-      }
-      let latest;
-      try {
-        latest = await figma.importComponentByKeyAsync(main.key);
-      } catch (e) {
-        post({
-          type: "scan-item-excluded",
-          name: inst.name,
-          reason: main.remote ? "\u6700\u65B0\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557" : "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8"
-        });
-        continue;
-      }
-      if (latest.id === main.id) {
-        post({ type: "scan-item-excluded", name: inst.name, reason: "\u65E2\u306B\u6700\u65B0\u7248\u3092\u53C2\u7167" });
-        continue;
-      }
-      if (scanCancelled) break;
-      store.set(inst.id, { instance: inst, latestComponent: latest });
-      await computeAndSendDiff(inst, latest, "scan-item-result");
+      figma.commitUndo();
     }
-    figma.commitUndo();
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  async function computeAndSendDiff(inst, latest, messageType) {
+  async function computeAndSendDiff(inst, latest) {
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
@@ -108,29 +113,16 @@
     clone.y = inst.y;
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
-    if (sizeChanged) {
-      clone.remove();
-      post({ type: messageType, id: inst.id, name: inst.name, sizeChanged: true });
-      return;
-    }
     const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
     clone.remove();
     post({
-      type: messageType,
+      type: "scan-item-result",
       id: inst.id,
       name: inst.name,
-      sizeChanged: false,
+      sizeChanged,
       before: beforeBytes,
       after: afterBytes
     });
-  }
-  async function handleRetryDiff(id) {
-    const item = store.get(id);
-    if (!item) {
-      postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
-      return;
-    }
-    await computeAndSendDiff(item.instance, item.latestComponent, "retry-diff-result");
   }
   async function handleApply(id) {
     const item = store.get(id);
@@ -158,45 +150,80 @@
     figma.commitUndo();
     post({ type: "apply-bulk-done", ids: succeeded });
   }
-  function markOne(id) {
+  var labelFontCache = null;
+  async function ensureLabelFont() {
+    if (labelFontCache) return labelFontCache;
+    const preferred = { family: "Inter", style: "Bold" };
+    try {
+      await figma.loadFontAsync(preferred);
+      labelFontCache = preferred;
+    } catch (e) {
+      const fallback = { family: "Roboto", style: "Bold" };
+      await figma.loadFontAsync(fallback);
+      labelFontCache = fallback;
+    }
+    return labelFontCache;
+  }
+  async function markOne(id) {
     const item = store.get(id);
     if (!item) return false;
     const inst = item.instance;
     const latest = item.latestComponent;
     const parent = inst.parent;
     if (!parent || !("insertChild" in parent)) return false;
+    const font = await ensureLabelFont();
     const outset = 4;
-    const danger = { r: 0.82, g: 0.27, b: 0.23 };
-    function outlineMarker(target, label) {
+    const red = { r: 0.82, g: 0.27, b: 0.23 };
+    const green = { r: 0.11, g: 0.6, b: 0.32 };
+    function outlineMarker(target, color, name) {
       const marker2 = figma.createRectangle();
-      marker2.name = `\u26A0 Diff Marker \u2014 ${label}`;
+      marker2.name = name;
       marker2.x = target.x - outset;
       marker2.y = target.y - outset;
       marker2.resize(target.width + outset * 2, target.height + outset * 2);
       marker2.fills = [];
-      marker2.strokes = [{ type: "SOLID", color: danger }];
+      marker2.strokes = [{ type: "SOLID", color }];
       marker2.strokeWeight = 4;
       marker2.strokeAlign = "OUTSIDE";
       marker2.locked = true;
       marker2.setPluginData(ROLE_KEY, "marker");
       return marker2;
     }
+    function labelBelow(target, text, color) {
+      const label = figma.createText();
+      label.fontName = font;
+      label.fontSize = 11;
+      label.characters = text;
+      label.fills = [{ type: "SOLID", color }];
+      label.textAlignHorizontal = "CENTER";
+      label.locked = true;
+      label.name = `\u26A0 ${text} label`;
+      label.setPluginData(ROLE_KEY, "marker");
+      label.x = target.x + (target.width - label.width) / 2;
+      label.y = target.y + target.height + outset + 4;
+      return label;
+    }
     const originalIndex = parent.children.indexOf(inst);
-    const marker = outlineMarker(inst, inst.name);
+    const marker = outlineMarker(inst, red, `\u26A0 Diff Marker \u2014 ${inst.name}`);
     parent.insertChild(originalIndex + 1, marker);
+    const currentLabel = labelBelow(inst, "Current", red);
+    parent.insertChild(originalIndex + 2, currentLabel);
     const after = inst.clone();
     after.name = `\u26A0 AFTER PREVIEW\uFF08\u78BA\u8A8D\u5F8C\u306B\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\uFF09\u2014 ${inst.name}`;
     after.swapComponent(latest);
     after.x = inst.x + inst.width + 40;
     after.y = inst.y;
     after.setPluginData(ROLE_KEY, "after-preview");
-    parent.insertChild(originalIndex + 2, after);
-    const afterMarker = outlineMarker(after, `${inst.name} (After)`);
-    parent.insertChild(originalIndex + 3, afterMarker);
+    parent.insertChild(originalIndex + 3, after);
+    const afterMarker = outlineMarker(after, green, `\u26A0 Diff Marker \u2014 ${inst.name} (After)`);
+    parent.insertChild(originalIndex + 4, afterMarker);
+    const latestLabel = labelBelow(after, "Latest", green);
+    parent.insertChild(originalIndex + 5, latestLabel);
     return true;
   }
   async function handleMark(id) {
-    if (!markOne(id)) {
+    const ok = await markOne(id);
+    if (!ok) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
       return;
     }
@@ -209,7 +236,7 @@
     for (let i = 0; i < ids.length; i++) {
       const item = store.get(ids[i]);
       if (item) post({ type: "mark-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
-      if (markOne(ids[i])) succeeded.push(ids[i]);
+      if (await markOne(ids[i])) succeeded.push(ids[i]);
     }
     figma.commitUndo();
     post({ type: "mark-bulk-done", ids: succeeded });
@@ -253,9 +280,6 @@
           break;
         case "mark-bulk":
           if (msg.ids) await handleMarkBulk(msg.ids);
-          break;
-        case "retry-diff":
-          if (msg.id) await handleRetryDiff(msg.id);
           break;
         case "jump":
           if (msg.id) handleJump(msg.id);

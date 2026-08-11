@@ -21,6 +21,7 @@
     --divider: #ededee;
     --row-hover: #f8f8f9;
     --danger: #d1453b;
+    --overlay: rgba(20,20,22,0.4);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -41,6 +42,7 @@
       --divider: #3a3b3e;
       --row-hover: #313234;
       --danger: #ff8078;
+      --overlay: rgba(0,0,0,0.55);
     }
   }
 
@@ -55,15 +57,23 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
+    position: relative;
   }
   .hidden { display: none !important; }
   button:focus-visible, input:focus-visible, summary:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
 
-  .chrome { background: var(--chrome-bg); border-bottom: 1px solid var(--panel-border); padding: 10px 14px; display: flex; align-items: center; gap: 8px; flex: none; }
-  .chrome-title { font-size: 12px; font-weight: 700; }
+  .chrome { background: var(--chrome-bg); border-bottom: 1px solid var(--panel-border); padding: 8px 10px 8px 14px; display: flex; align-items: center; gap: 8px; flex: none; }
+  .chrome-title { font-size: 12px; font-weight: 700; flex: 1; }
   .chrome-sub { font-size: 10px; color: var(--text-faint); font-weight: 400; margin-left: 6px; }
+  .chrome-reset-btn {
+    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; flex: none;
+  }
+  .chrome-reset-btn:hover { background: var(--row-hover); color: var(--text); }
+  .chrome-reset-btn[disabled] { opacity: 0.35; cursor: default; }
+  .chrome-reset-btn svg { width: 14px; height: 14px; }
 
   .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -89,6 +99,12 @@
   .btn-big[disabled] { opacity: 0.42; cursor: default; background: var(--text-faint); }
   .btn-big.marking { background: var(--warning-strong); }
   .btn-big.marking:hover { background: #b8790c; }
+  .btn-big.outline-danger {
+    background: transparent; border: 1.5px solid var(--danger); color: var(--danger);
+    height: 36px; margin-top: 8px;
+  }
+  .btn-big.outline-danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .btn-big.outline-danger[disabled] { opacity: 0.4; border-color: var(--text-faint); color: var(--text-faint); background: transparent; }
 
   /* ---- Busy (bulk 更新／マーキング only) ---- */
   .busy { padding: 30px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
@@ -136,6 +152,12 @@
   .tab-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .tab-panel.hidden { display: none; }
 
+  .list-toolbar { display: flex; align-items: center; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--divider); flex: none; }
+  .list-toolbar-link { font-size: 10px; font-weight: 600; color: var(--accent-strong); background: none; border: none; cursor: pointer; padding: 2px 0; }
+  .list-toolbar-link:hover { text-decoration: underline; }
+  .list-toolbar-sep { color: var(--divider); font-size: 10px; }
+  .list-toolbar-link.expand { margin-left: auto; color: var(--text-muted); }
+
   .row-list { flex: 1; overflow-y: auto; min-height: 0; }
   .row { border-bottom: 1px solid var(--divider); }
   .row.enter { animation: rise 0.3s ease; }
@@ -167,6 +189,11 @@
   .preview-frame.size-changed svg { width: 20px; height: 20px; color: var(--danger); }
   .preview-frame.size-changed span { font-size: 9.5px; color: var(--danger); font-weight: 700; }
 
+  .size-compare { display: flex; align-items: flex-start; gap: 10px; }
+  .size-compare-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .size-compare-item .preview-frame { width: 96px; height: 68px; }
+  .size-compare-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+
   .diff-pct { font-size: 10.5px; font-weight: 700; color: var(--warning-strong); background: var(--warning-bg); border-radius: 5px; padding: 4px 8px; align-self: flex-start; }
   .preview-caption { font-size: 9.5px; color: var(--text-faint); max-width: 160px; }
 
@@ -176,6 +203,7 @@
   .ghost-btn svg { width: 11px; height: 11px; }
   .ghost-btn.accent { color: var(--accent-strong); border-color: var(--accent); }
   .ghost-btn.warn { color: var(--warning-strong); border-color: var(--warning-strong); }
+  .ghost-btn.danger { color: var(--danger); border-color: var(--danger); }
   .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .tab-footer { border-top: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
@@ -193,11 +221,30 @@
     box-shadow: 0 8px 20px rgba(0,0,0,0.25); z-index: 50;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---- 構わず更新の確認ダイアログ ---- */
+  .modal-overlay {
+    position: fixed; inset: 0; background: var(--overlay);
+    display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px;
+  }
+  .modal-box {
+    width: 100%; max-width: 320px; background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 16px; box-shadow: 0 20px 48px rgba(0,0,0,0.25);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .modal-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+  .modal-title svg { width: 14px; height: 14px; color: var(--danger); flex: none; }
+  .modal-body { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .modal-actions .btn-big { width: auto; height: 32px; padding: 0 16px; font-size: 11px; }
 </style>
 </head>
 <body>
   <div class="chrome">
     <div class="chrome-title">Update Diff Guard<span class="chrome-sub" id="chromeSub">アイドル</span></div>
+    <button class="chrome-reset-btn" id="resetBtn" title="最初からやり直す" aria-label="最初からやり直す">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 1 1.6 3.7M3 8V4M3 8h4"/></svg>
+    </button>
   </div>
 
   <div class="panel-body">
@@ -258,6 +305,12 @@
       </div>
 
       <div class="tab-panel" data-panel="clean">
+        <div class="list-toolbar">
+          <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
+          <span class="list-toolbar-sep">|</span>
+          <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
+          <button class="list-toolbar-link expand" id="cleanExpandToggle">すべて展開</button>
+        </div>
         <div class="row-list" id="cleanList"></div>
         <div class="tab-footer">
           <div class="tab-footer-actions">
@@ -267,6 +320,12 @@
       </div>
 
       <div class="tab-panel hidden" data-panel="diff">
+        <div class="list-toolbar">
+          <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
+          <span class="list-toolbar-sep">|</span>
+          <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
+          <button class="list-toolbar-link expand" id="diffExpandToggle">すべて展開</button>
+        </div>
         <div class="row-list" id="diffList"></div>
         <div class="tab-footer">
           <div class="marker-strip hidden" id="markerStrip">
@@ -276,6 +335,7 @@
           </div>
           <div class="tab-footer-actions">
             <button class="btn-big marking" id="markBtn"><span id="markBtnLabel">一括マーキング（0件）</span></button>
+            <button class="btn-big outline-danger" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括で構わず更新（0件）</span></button>
           </div>
         </div>
       </div>
@@ -284,6 +344,20 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="modal-overlay hidden" id="confirmOverlay">
+    <div class="modal-box">
+      <div class="modal-title">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5L1 14h14L8 1.5z"/><path d="M8 6.5v3.2M8 12v.01"/></svg>
+        差分を確認せず更新します
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="modalCancel">キャンセル</button>
+        <button class="btn-big" id="modalConfirm">続行</button>
+      </div>
+    </div>
+  </div>
 
   <!-- BUNDLED_SCRIPT -->
 </body>

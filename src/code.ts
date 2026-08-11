@@ -1,9 +1,12 @@
 // Update Diff Guard — main thread (sandboxed, Figma Document API).
 //
 // Implements Spec.md's full design: streaming scan (one message per
-// resolved instance, cancellable), individual + bulk update for
-// 見た目差分なし items, individual + bulk marking for 見た目差分あり items,
-// and a pluginData-tagged marker/after-preview cleanup utility.
+// resolved instance, cancellable, one commitUndo per item so a concurrent
+// user undo can't reach further back than the item in flight), individual
+// + bulk update for 見た目差分なし items (also reused for "構わず更新" on
+// 見た目差分あり items — the write is identical either way), individual +
+// bulk marking, and a pluginData-tagged marker/after-preview cleanup
+// utility.
 //
 // Classification (clean vs diff) happens in ui.ts, not here — this side
 // only ever needs to know "which instance" via id, never "is it clean".
@@ -89,6 +92,15 @@ async function findAllTaggedNodes(): Promise<SceneNode[]> {
 }
 
 // ---- Scan ------------------------------------------------------------
+//
+// Runs one instance at a time (not in parallel) so that:
+//   1. results can stream to the UI as each one resolves, and
+//   2. figma.commitUndo() after each item bounds how much a concurrent
+//      user edit/undo during the scan can possibly disturb — see the
+//      "editing the file mid-scan" discussion this was written for.
+// A crash on one instance (e.g. it was deleted or reparented by the user
+// while the scan was awaiting an export) is caught per-item so it can't
+// abort the rest of the scan.
 
 async function runScan(scope: ScopeMode): Promise<void> {
   store.clear();
@@ -100,51 +112,56 @@ async function runScan(scope: ScopeMode): Promise<void> {
   for (const inst of targets) {
     if (scanCancelled) break;
 
-    let main: ComponentNode | null;
     try {
-      main = await inst.getMainComponentAsync();
+      let main: ComponentNode | null;
+      try {
+        main = await inst.getMainComponentAsync();
+      } catch {
+        main = null;
+      }
+
+      if (!main) {
+        post({ type: "scan-item-excluded", name: inst.name, reason: "未パブリッシュのローカルコンポーネント" });
+        continue;
+      }
+
+      let latest: ComponentNode;
+      try {
+        latest = await figma.importComponentByKeyAsync(main.key);
+      } catch {
+        post({
+          type: "scan-item-excluded",
+          name: inst.name,
+          reason: main.remote ? "最新コンポーネントの取得に失敗" : "未パブリッシュのローカルコンポーネント",
+        });
+        continue;
+      }
+
+      if (latest.id === main.id) {
+        post({ type: "scan-item-excluded", name: inst.name, reason: "既に最新版を参照" });
+        continue;
+      }
+
+      if (scanCancelled) break;
+
+      store.set(inst.id, { instance: inst, latestComponent: latest });
+      await computeAndSendDiff(inst, latest);
     } catch {
-      main = null;
+      // The instance (or its parent) was likely deleted/moved by the user
+      // while this scan was mid-flight. Skip it and keep going rather than
+      // losing the rest of the scan's progress.
+      store.delete(inst.id);
+      post({ type: "scan-item-excluded", name: inst.name, reason: "比較中にエラーが発生しました（編集された可能性があります）" });
     }
 
-    if (!main) {
-      post({ type: "scan-item-excluded", name: inst.name, reason: "未パブリッシュのローカルコンポーネント" });
-      continue;
-    }
-
-    let latest: ComponentNode;
-    try {
-      latest = await figma.importComponentByKeyAsync(main.key);
-    } catch {
-      post({
-        type: "scan-item-excluded",
-        name: inst.name,
-        reason: main.remote ? "最新コンポーネントの取得に失敗" : "未パブリッシュのローカルコンポーネント",
-      });
-      continue;
-    }
-
-    if (latest.id === main.id) {
-      post({ type: "scan-item-excluded", name: inst.name, reason: "既に最新版を参照" });
-      continue;
-    }
-
-    if (scanCancelled) break;
-
-    store.set(inst.id, { instance: inst, latestComponent: latest });
-    await computeAndSendDiff(inst, latest, "scan-item-result");
+    figma.commitUndo();
   }
 
-  figma.commitUndo();
   post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-async function computeAndSendDiff(
-  inst: InstanceNode,
-  latest: ComponentNode,
-  messageType: "scan-item-result" | "retry-diff-result"
-): Promise<void> {
+async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
@@ -159,39 +176,30 @@ async function computeAndSendDiff(
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
 
-  if (sizeChanged) {
-    clone.remove();
-    post({ type: messageType, id: inst.id, name: inst.name, sizeChanged: true });
-    return;
-  }
-
   // Deliberately left visible=true: exportAsync() on a hidden node has
   // been reported to sometimes render a blank/transparent image, which
   // would make every "after" image a spurious diff. The candidate is
-  // removed immediately below anyway.
+  // removed immediately below anyway. Exported even when sizeChanged, so
+  // the UI can still show Current/Latest side by side for that case.
   const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
   clone.remove();
 
   post({
-    type: messageType,
+    type: "scan-item-result",
     id: inst.id,
     name: inst.name,
-    sizeChanged: false,
+    sizeChanged,
     before: beforeBytes,
     after: afterBytes,
   });
 }
 
-async function handleRetryDiff(id: string): Promise<void> {
-  const item = store.get(id);
-  if (!item) {
-    postError(`対象が見つかりません: ${id}`);
-    return;
-  }
-  await computeAndSendDiff(item.instance, item.latestComponent, "retry-diff-result");
-}
-
-// ---- 更新（見た目差分なし） --------------------------------------------
+// ---- 更新（見た目差分なし・および「構わず更新」） -----------------------
+//
+// Both the plain 更新 flow (見た目差分なしタブ) and 構わず更新
+// (見た目差分ありタブ, ignoring a known diff) end up calling exactly this
+// same code — the write itself doesn't know or care which tab the id came
+// from, only ui.ts's confirmation flow differs.
 
 async function handleApply(id: string): Promise<void> {
   const item = store.get(id);
@@ -225,8 +233,28 @@ async function handleApplyBulk(ids: string[]): Promise<void> {
 }
 
 // ---- マーキング（見た目差分あり） --------------------------------------
+//
+// Current (red) marks the untouched original; Latest (green) marks the
+// after-preview. Labels make the red/green meaning legible without
+// requiring the viewer to already know this plugin's conventions.
 
-function markOne(id: string): boolean {
+let labelFontCache: FontName | null = null;
+
+async function ensureLabelFont(): Promise<FontName> {
+  if (labelFontCache) return labelFontCache;
+  const preferred: FontName = { family: "Inter", style: "Bold" };
+  try {
+    await figma.loadFontAsync(preferred);
+    labelFontCache = preferred;
+  } catch {
+    const fallback: FontName = { family: "Roboto", style: "Bold" };
+    await figma.loadFontAsync(fallback);
+    labelFontCache = fallback;
+  }
+  return labelFontCache;
+}
+
+async function markOne(id: string): Promise<boolean> {
   const item = store.get(id);
   if (!item) return false;
   const inst = item.instance;
@@ -234,17 +262,19 @@ function markOne(id: string): boolean {
   const parent = inst.parent;
   if (!parent || !("insertChild" in parent)) return false;
 
+  const font = await ensureLabelFont();
   const outset = 4;
-  const danger = { r: 0.82, g: 0.27, b: 0.23 };
+  const red: RGB = { r: 0.82, g: 0.27, b: 0.23 };
+  const green: RGB = { r: 0.11, g: 0.6, b: 0.32 };
 
-  function outlineMarker(target: SceneNode & LayoutMixin, label: string): RectangleNode {
+  function outlineMarker(target: { x: number; y: number; width: number; height: number }, color: RGB, name: string): RectangleNode {
     const marker = figma.createRectangle();
-    marker.name = `⚠ Diff Marker — ${label}`;
+    marker.name = name;
     marker.x = target.x - outset;
     marker.y = target.y - outset;
     marker.resize(target.width + outset * 2, target.height + outset * 2);
     marker.fills = [];
-    marker.strokes = [{ type: "SOLID", color: danger }];
+    marker.strokes = [{ type: "SOLID", color }];
     marker.strokeWeight = 4;
     marker.strokeAlign = "OUTSIDE";
     marker.locked = true;
@@ -252,14 +282,33 @@ function markOne(id: string): boolean {
     return marker;
   }
 
+  function labelBelow(target: { x: number; y: number; width: number; height: number }, text: string, color: RGB): TextNode {
+    const label = figma.createText();
+    label.fontName = font;
+    label.fontSize = 11;
+    label.characters = text;
+    label.fills = [{ type: "SOLID", color }];
+    label.textAlignHorizontal = "CENTER";
+    label.locked = true;
+    label.name = `⚠ ${text} label`;
+    label.setPluginData(ROLE_KEY, "marker");
+    // textAutoResize defaults to WIDTH_AND_HEIGHT, so .width here already
+    // reflects the natural size of "Current"/"Latest" — no manual resize.
+    label.x = target.x + (target.width - label.width) / 2;
+    label.y = target.y + target.height + outset + 4;
+    return label;
+  }
+
   const originalIndex = parent.children.indexOf(inst);
 
-  // 1. Marker over the original instance. The original itself is never
-  // touched — only new sibling nodes are created.
-  const marker = outlineMarker(inst, inst.name);
+  // 1-2. Red marker + "Current" label over the original. The original
+  // itself is never touched — only new sibling nodes are created.
+  const marker = outlineMarker(inst, red, `⚠ Diff Marker — ${inst.name}`);
   parent.insertChild(originalIndex + 1, marker);
+  const currentLabel = labelBelow(inst, "Current", red);
+  parent.insertChild(originalIndex + 2, currentLabel);
 
-  // 2. After-preview instance: a fresh clone, swapped to the latest
+  // 3. After-preview instance: a fresh clone, swapped to the latest
   // component, placed to the right and adjacent in the layer list.
   const after = inst.clone();
   after.name = `⚠ AFTER PREVIEW（確認後に削除してください）— ${inst.name}`;
@@ -267,20 +316,22 @@ function markOne(id: string): boolean {
   after.x = inst.x + inst.width + 40;
   after.y = inst.y;
   after.setPluginData(ROLE_KEY, "after-preview");
-  parent.insertChild(originalIndex + 2, after);
+  parent.insertChild(originalIndex + 3, after);
 
-  // 3. Marker over the after-preview too — never a stroke on the
-  // instance itself (that would distort the very appearance it's meant
-  // to preview). This is what stops the after-preview from being mistaken
-  // for real, adopted content.
-  const afterMarker = outlineMarker(after, `${inst.name} (After)`);
-  parent.insertChild(originalIndex + 3, afterMarker);
+  // 4-5. Green marker + "Latest" label over the after-preview. Never a
+  // stroke on the instance itself (that would distort the very appearance
+  // it's meant to preview) — always a separate overlaid node.
+  const afterMarker = outlineMarker(after, green, `⚠ Diff Marker — ${inst.name} (After)`);
+  parent.insertChild(originalIndex + 4, afterMarker);
+  const latestLabel = labelBelow(after, "Latest", green);
+  parent.insertChild(originalIndex + 5, latestLabel);
 
   return true;
 }
 
 async function handleMark(id: string): Promise<void> {
-  if (!markOne(id)) {
+  const ok = await markOne(id);
+  if (!ok) {
     postError(`対象が見つかりません: ${id}`);
     return;
   }
@@ -294,7 +345,7 @@ async function handleMarkBulk(ids: string[]): Promise<void> {
   for (let i = 0; i < ids.length; i++) {
     const item = store.get(ids[i]);
     if (item) post({ type: "mark-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
-    if (markOne(ids[i])) succeeded.push(ids[i]);
+    if (await markOne(ids[i])) succeeded.push(ids[i]);
   }
   figma.commitUndo();
   post({ type: "mark-bulk-done", ids: succeeded });
@@ -352,9 +403,6 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "mark-bulk":
         if (msg.ids) await handleMarkBulk(msg.ids);
-        break;
-      case "retry-diff":
-        if (msg.id) await handleRetryDiff(msg.id);
         break;
       case "jump":
         if (msg.id) handleJump(msg.id);

@@ -14,7 +14,9 @@ interface RowData {
   name: string;
   status: RowStatus;
   diffPercent?: number;
-  imageUrl?: string; // after-image (clean) or diff-image (diff); absent for size-changed
+  imageUrl?: string; // after-image (clean) or diff-image (diff)
+  currentUrl?: string; // size-changed only: before/current image
+  latestUrl?: string; // size-changed only: after/latest image
 }
 
 interface ExcludedEntry {
@@ -32,6 +34,8 @@ let scanning = false;
 let scanTotal = 0;
 let scanDone = 0;
 let markerCount = 0;
+let allExpanded: Record<"clean" | "diff", boolean> = { clean: false, diff: false };
+let lastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
 
 function post(msg: Record<string, unknown>): void {
   parent.postMessage({ pluginMessage: msg }, "*");
@@ -50,8 +54,13 @@ function escapeHtml(s: string): string {
 
 /* ---- view switching ---- */
 const views = { setup: $("setupView"), busy: $("busyView"), result: $("resultView") };
+const resetBtn = $("resetBtn") as HTMLButtonElement;
+
 function show(name: keyof typeof views): void {
   (Object.keys(views) as Array<keyof typeof views>).forEach((k) => views[k].classList.toggle("hidden", k !== name));
+  // Reset is disabled only while a full-screen bulk operation is running —
+  // individual row actions are lightweight and don't block navigation.
+  resetBtn.disabled = name === "busy";
 }
 
 function setChromeSub(text: string): void {
@@ -66,6 +75,29 @@ function showToast(msg: string): void {
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2600);
 }
+
+/* ---- リセット（常設・busy中はグレーアウト） ---- */
+function resetToSetup(): void {
+  rows.clear();
+  cleanIds = [];
+  diffIds = [];
+  excluded = [];
+  Object.keys(checked).forEach((k) => delete checked[k]);
+  Object.keys(markedIds).forEach((k) => delete markedIds[k]);
+  markerCount = 0;
+  lastClickedIndex = null;
+  show("setup");
+  setChromeSub("アイドル");
+}
+
+resetBtn.addEventListener("click", () => {
+  if (resetBtn.disabled) return;
+  if (scanning) {
+    post({ type: "cancel-scan" }); // onScanFinished(true) will land us on setup
+  } else {
+    resetToSetup();
+  }
+});
 
 /* ---- image helpers ---- */
 function dataUrlFromBytes(bytes: Uint8Array): string {
@@ -111,13 +143,25 @@ interface ScanItemMsg {
 
 async function processDiff(msg: ScanItemMsg): Promise<RowData> {
   if (msg.sizeChanged || !msg.before || !msg.after) {
-    return { id: msg.id, name: msg.name, status: "size-changed" };
+    return {
+      id: msg.id,
+      name: msg.name,
+      status: "size-changed",
+      currentUrl: msg.before ? dataUrlFromBytes(msg.before) : undefined,
+      latestUrl: msg.after ? dataUrlFromBytes(msg.after) : undefined,
+    };
   }
 
   const before = await loadImageData(msg.before);
   const after = await loadImageData(msg.after);
   if (before.width !== after.width || before.height !== after.height) {
-    return { id: msg.id, name: msg.name, status: "size-changed" };
+    return {
+      id: msg.id,
+      name: msg.name,
+      status: "size-changed",
+      currentUrl: dataUrlFromBytes(msg.before),
+      latestUrl: dataUrlFromBytes(msg.after),
+    };
   }
 
   const { width, height } = before;
@@ -170,6 +214,7 @@ function onScanStarted(total: number): void {
   scanning = true;
   scanTotal = total;
   scanDone = 0;
+  lastClickedIndex = null;
 
   show("result");
   $("scanProgressStrip").classList.remove("hidden");
@@ -210,30 +255,12 @@ function onScanFinished(cancelled: boolean): void {
   scanning = false;
   $("scanProgressStrip").classList.add("hidden");
   if (cancelled) {
-    show("setup");
-    setChromeSub("アイドル");
+    resetToSetup();
     showToast("スキャンを中止しました");
   } else {
     setChromeSub("検出完了");
     renderTabs();
   }
-}
-
-async function onRetryDiffResult(msg: ScanItemMsg): Promise<void> {
-  const oldStatus = rows.get(msg.id)?.status;
-  const newRow = await processDiff(msg);
-  rows.set(newRow.id, newRow);
-
-  const oldIsClean = oldStatus === "clean";
-  const newIsClean = newRow.status === "clean";
-  if (oldIsClean !== newIsClean) {
-    if (oldIsClean) cleanIds = cleanIds.filter((x) => x !== newRow.id);
-    else diffIds = diffIds.filter((x) => x !== newRow.id);
-    if (newIsClean) cleanIds.push(newRow.id);
-    else diffIds.push(newRow.id);
-  }
-  renderTabs();
-  showToast("再比較しました");
 }
 
 /* ---- 除外内訳 ---- */
@@ -268,7 +295,10 @@ function jumpBtnHtml(id: string): string {
 
 function previewHtml(row: RowData): string {
   if (row.status === "size-changed") {
-    return `<div class="preview-frame size-changed"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5V2h3M14 5V2h-3M2 11v3h3M14 11v3h-3"/></svg><span>サイズ変更</span></div>`;
+    return `<div class="size-compare">
+      <div class="size-compare-item"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="size-compare-label">Current</span></div>
+      <div class="size-compare-item"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="size-compare-label">Latest</span></div>
+    </div>`;
   }
   return `<div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div>`;
 }
@@ -280,7 +310,7 @@ function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): stri
 
   let caption: string;
   if (kind === "clean") caption = "更新後の見た目（差分なしのためBeforeと同一）";
-  else if (row.status === "size-changed") caption = "サイズが変更されたため、ピクセル比較をスキップしました";
+  else if (row.status === "size-changed") caption = "サイズが変更されたため、CurrentとLatestをそのまま並べて表示しています（ピクセル比較はスキップ）";
   else caption = "pixelmatchの差分画像（副産物）をそのまま表示";
 
   const pctBadge =
@@ -294,13 +324,13 @@ function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): stri
   } else if (marked) {
     rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn" disabled>✓ マーキング済み</button></div>`;
   } else {
-    rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn" data-retry="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 1 1.5 3.6M3 8V4M3 8h4"/></svg>再比較</button><button class="ghost-btn warn" data-individual-mark="${id}">マーキングする</button></div>`;
+    rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">構わず更新</button><button class="ghost-btn warn" data-individual-mark="${id}">マーキングする</button></div>`;
   }
 
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${marked ? "disabled" : checked[id] ? "checked" : ""}>`;
   const markedPill = marked ? '<span class="marked-pill">マーキング済み</span>' : "";
 
-  return `<details class="row${justEntered ? " enter" : ""}${marked ? " is-marked" : ""}" data-id="${id}">
+  return `<details class="row${justEntered ? " enter" : ""}${marked ? " is-marked" : ""}" data-id="${id}" ${allExpanded[kind] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
@@ -331,25 +361,22 @@ function renderTabs(justEnteredId?: string): void {
     ? diffIds.map((id) => rowHtml(id, "diff", id === justEnteredId)).join("")
     : emptyState("diff");
 
+  wireRowEvents();
+  updateFooterButtons();
+  updateExpandToggleLabels();
+}
+
+function wireRowEvents(): void {
   document.querySelectorAll<HTMLInputElement>("#resultView .row-check").forEach((cb) => {
-    cb.addEventListener("click", (e) => e.stopPropagation());
-    cb.addEventListener("change", (e) => {
-      const id = (e.target as HTMLInputElement).getAttribute("data-id")!;
-      checked[id] = (e.target as HTMLInputElement).checked;
-      updateFooterButtons();
+    cb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleCheckboxClick(cb, e as MouseEvent);
     });
   });
   document.querySelectorAll<HTMLButtonElement>("#resultView [data-jump]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "jump", id: btn.getAttribute("data-jump") });
-    });
-  });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-retry]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      btn.disabled = true;
-      post({ type: "retry-diff", id: btn.getAttribute("data-retry") });
     });
   });
   document.querySelectorAll<HTMLButtonElement>("#resultView [data-individual-update]").forEach((btn) => {
@@ -368,8 +395,69 @@ function renderTabs(justEnteredId?: string): void {
       post({ type: "mark", id: btn.getAttribute("data-individual-mark") });
     });
   });
+  document.querySelectorAll<HTMLButtonElement>("#resultView [data-individual-force]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute("data-individual-force")!;
+      openForceConfirm({ kind: "single", id, btn });
+    });
+  });
+}
 
-  updateFooterButtons();
+/* ---- チェックボックス: 通常クリック + Shiftで範囲選択 ---- */
+function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
+  const id = cb.getAttribute("data-id")!;
+  const tab: "clean" | "diff" = cleanIds.includes(id) ? "clean" : "diff";
+  const list = tab === "clean" ? cleanIds : diffIds;
+  const index = list.indexOf(id);
+  const newState = cb.checked; // click already toggled the native checkbox by the time this fires
+
+  if (e.shiftKey && lastClickedIndex && lastClickedIndex.tab === tab) {
+    const from = Math.min(lastClickedIndex.index, index);
+    const to = Math.max(lastClickedIndex.index, index);
+    for (let i = from; i <= to; i++) {
+      const rid = list[i];
+      if (markedIds[rid]) continue; // マーキング済みは対象外
+      checked[rid] = newState;
+    }
+    renderTabs();
+  } else {
+    checked[id] = newState;
+    updateFooterButtons();
+  }
+  lastClickedIndex = { tab, index };
+}
+
+/* ---- すべて選択・すべて解除・すべて展開/折りたたみ ---- */
+function selectableIds(tab: "clean" | "diff"): string[] {
+  const list = tab === "clean" ? cleanIds : diffIds;
+  return list.filter((id) => !markedIds[id]);
+}
+
+function bindListToolbar(tab: "clean" | "diff"): void {
+  $(`${tab}SelectAll`).addEventListener("click", () => {
+    selectableIds(tab).forEach((id) => (checked[id] = true));
+    renderTabs();
+  });
+  $(`${tab}SelectNone`).addEventListener("click", () => {
+    selectableIds(tab).forEach((id) => (checked[id] = false));
+    renderTabs();
+  });
+  $(`${tab}ExpandToggle`).addEventListener("click", () => {
+    allExpanded[tab] = !allExpanded[tab];
+    const list = document.getElementById(tab === "clean" ? "cleanList" : "diffList")!;
+    list.querySelectorAll("details").forEach((d) => {
+      (d as HTMLDetailsElement).open = allExpanded[tab];
+    });
+    updateExpandToggleLabels();
+  });
+}
+bindListToolbar("clean");
+bindListToolbar("diff");
+
+function updateExpandToggleLabels(): void {
+  $("cleanExpandToggle").textContent = allExpanded.clean ? "すべて折りたたむ" : "すべて展開";
+  $("diffExpandToggle").textContent = allExpanded.diff ? "すべて折りたたむ" : "すべて展開";
 }
 
 function updateFooterButtons(): void {
@@ -379,9 +467,11 @@ function updateFooterButtons(): void {
   ($("updateBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
   $("markBtnLabel").textContent = `一括マーキング（${diffChecked}件）`;
   ($("markBtn") as HTMLButtonElement).disabled = diffChecked === 0;
+  $("forceUpdateBtnLabel").textContent = `一括で構わず更新（${diffChecked}件）`;
+  ($("forceUpdateBtn") as HTMLButtonElement).disabled = diffChecked === 0;
 }
 
-/* ---- 一括更新 / 一括マーキング ---- */
+/* ---- 一括更新 / 一括マーキング / 一括で構わず更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -410,21 +500,29 @@ $("markBtn").addEventListener("click", () => {
   post({ type: "mark-bulk", ids: targets });
 });
 
-function onApplied(id: string): void {
-  const row = rows.get(id);
+$("forceUpdateBtn").addEventListener("click", () => {
+  const targets = diffIds.filter((id) => checked[id] && !markedIds[id]);
+  if (targets.length === 0) return;
+  openForceConfirm({ kind: "bulk", ids: targets });
+});
+
+function removeResolvedId(id: string): void {
   cleanIds = cleanIds.filter((x) => x !== id);
+  diffIds = diffIds.filter((x) => x !== id);
   rows.delete(id);
   delete checked[id];
+  delete markedIds[id];
+}
+
+function onApplied(id: string): void {
+  const row = rows.get(id);
+  removeResolvedId(id);
   renderTabs();
   showToast(`「${row?.name ?? id}」を更新しました`);
 }
 
 function onApplyBulkDone(ids: string[]): void {
-  ids.forEach((id) => {
-    cleanIds = cleanIds.filter((x) => x !== id);
-    rows.delete(id);
-    delete checked[id];
-  });
+  ids.forEach(removeResolvedId);
   renderTabs();
   show("result");
   showToast(`${ids.length}件を更新しました`);
@@ -449,6 +547,37 @@ function onMarkBulkDone(ids: string[]): void {
   showToast(`${ids.length}件をマーキングしました`);
   setChromeSub("検出完了");
 }
+
+/* ---- 構わず更新の確認ダイアログ ---- */
+type PendingForce = { kind: "single"; id: string; btn: HTMLButtonElement } | { kind: "bulk"; ids: string[] };
+let pendingForce: PendingForce | null = null;
+
+function openForceConfirm(target: PendingForce): void {
+  pendingForce = target;
+  const count = target.kind === "single" ? 1 : target.ids.length;
+  $("confirmBody").textContent =
+    `${count}件のインスタンスは見た目に差分が確認されていますが、そのまま更新します。続行しますか？（Ctrl+Zでいつでも元に戻せます）`;
+  $("confirmOverlay").classList.remove("hidden");
+}
+
+$("modalCancel").addEventListener("click", () => {
+  $("confirmOverlay").classList.add("hidden");
+  pendingForce = null;
+});
+
+$("modalConfirm").addEventListener("click", () => {
+  $("confirmOverlay").classList.add("hidden");
+  if (!pendingForce) return;
+  if (pendingForce.kind === "single") {
+    pendingForce.btn.disabled = true;
+    pendingForce.btn.textContent = "更新中…";
+    post({ type: "apply", id: pendingForce.id });
+  } else {
+    showBulkBusy("更新しています");
+    post({ type: "apply-bulk", ids: pendingForce.ids });
+  }
+  pendingForce = null;
+});
 
 /* ---- マーカー管理 ---- */
 function updateMarkerStrip(): void {
@@ -504,9 +633,6 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "mark-bulk-done":
       onMarkBulkDone(msg.ids);
-      break;
-    case "retry-diff-result":
-      void onRetryDiffResult(msg);
       break;
     case "markers-cleared":
       showToast(`マーカーとAfterインスタンスを${msg.count}件削除しました`);
