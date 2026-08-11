@@ -3,6 +3,7 @@
   // src/code.ts
   figma.showUI(__html__, { width: 420, height: 660 });
   var store = /* @__PURE__ */ new Map();
+  var wrapperStore = /* @__PURE__ */ new Map();
   var scanCancelled = false;
   function post(msg) {
     figma.ui.postMessage(msg);
@@ -36,10 +37,10 @@
     return found;
   }
   var ROLE_KEY = "update-diff-guard-role";
+  var ROLE_VALUE = "latest-preview";
   function isTaggedNode(node) {
     if (!("getPluginData" in node)) return false;
-    const role = node.getPluginData(ROLE_KEY);
-    return role === "marker" || role === "after-preview";
+    return node.getPluginData(ROLE_KEY) === ROLE_VALUE;
   }
   function collectTaggedNodes(node, out) {
     if (isTaggedNode(node)) {
@@ -124,6 +125,13 @@
       after: afterBytes
     });
   }
+  function cleanupWrapper(id) {
+    const wrapper = wrapperStore.get(id);
+    if (wrapper) {
+      wrapper.remove();
+      wrapperStore.delete(id);
+    }
+  }
   async function handleApply(id) {
     const item = store.get(id);
     if (!item) {
@@ -131,8 +139,10 @@
       return;
     }
     item.instance.swapComponent(item.latestComponent);
+    cleanupWrapper(id);
     figma.commitUndo();
     post({ type: "applied", id });
+    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function handleApplyBulk(ids) {
     const succeeded = [];
@@ -142,6 +152,7 @@
       post({ type: "apply-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
       try {
         item.instance.swapComponent(item.latestComponent);
+        cleanupWrapper(ids[i]);
         succeeded.push(ids[i]);
       } catch (e) {
         postError(`\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ${item.instance.name}`);
@@ -149,103 +160,73 @@
     }
     figma.commitUndo();
     post({ type: "apply-bulk-done", ids: succeeded });
+    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  var labelFontCache = null;
-  async function ensureLabelFont() {
-    if (labelFontCache) return labelFontCache;
-    const preferred = { family: "Inter", style: "Bold" };
-    try {
-      await figma.loadFontAsync(preferred);
-      labelFontCache = preferred;
-    } catch (e) {
-      const fallback = { family: "Roboto", style: "Bold" };
-      await figma.loadFontAsync(fallback);
-      labelFontCache = fallback;
-    }
-    return labelFontCache;
-  }
-  async function markOne(id) {
+  async function placeLatestOne(id) {
+    if (wrapperStore.has(id)) return true;
     const item = store.get(id);
     if (!item) return false;
     const inst = item.instance;
     const latest = item.latestComponent;
     const parent = inst.parent;
     if (!parent || !("insertChild" in parent)) return false;
-    const font = await ensureLabelFont();
-    const outset = 4;
-    const red = { r: 0.82, g: 0.27, b: 0.23 };
-    const green = { r: 0.11, g: 0.6, b: 0.32 };
-    function outlineMarker(target, color, name) {
-      const marker2 = figma.createRectangle();
-      marker2.name = name;
-      marker2.x = target.x - outset;
-      marker2.y = target.y - outset;
-      marker2.resize(target.width + outset * 2, target.height + outset * 2);
-      marker2.fills = [];
-      marker2.strokes = [{ type: "SOLID", color }];
-      marker2.strokeWeight = 4;
-      marker2.strokeAlign = "OUTSIDE";
-      marker2.locked = true;
-      marker2.setPluginData(ROLE_KEY, "marker");
-      return marker2;
-    }
-    function labelBelow(target, text, color) {
-      const label = figma.createText();
-      label.fontName = font;
-      label.fontSize = 11;
-      label.characters = text;
-      label.fills = [{ type: "SOLID", color }];
-      label.textAlignHorizontal = "CENTER";
-      label.locked = true;
-      label.name = `\u26A0 ${text} label`;
-      label.setPluginData(ROLE_KEY, "marker");
-      label.x = target.x + (target.width - label.width) / 2;
-      label.y = target.y + target.height + outset + 4;
-      return label;
-    }
+    const wrapper = figma.createFrame();
+    wrapper.name = `\u26A0 Latest Preview \u2014 ${inst.name}`;
+    wrapper.x = inst.x;
+    wrapper.y = inst.y;
+    wrapper.resize(inst.width, inst.height);
+    wrapper.fills = [];
+    wrapper.strokes = [{ type: "SOLID", color: { r: 1, g: 0, b: 1 } }];
+    wrapper.strokeWeight = 20;
+    wrapper.strokeAlign = "OUTSIDE";
+    wrapper.locked = true;
+    wrapper.setPluginData(ROLE_KEY, ROLE_VALUE);
     const originalIndex = parent.children.indexOf(inst);
-    const marker = outlineMarker(inst, red, `\u26A0 Diff Marker \u2014 ${inst.name}`);
-    parent.insertChild(originalIndex + 1, marker);
-    const currentLabel = labelBelow(inst, "Current", red);
-    parent.insertChild(originalIndex + 2, currentLabel);
-    const after = inst.clone();
-    after.name = `\u26A0 AFTER PREVIEW\uFF08\u78BA\u8A8D\u5F8C\u306B\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\uFF09\u2014 ${inst.name}`;
-    after.swapComponent(latest);
-    after.x = inst.x + inst.width + 40;
-    after.y = inst.y;
-    after.setPluginData(ROLE_KEY, "after-preview");
-    parent.insertChild(originalIndex + 3, after);
-    const afterMarker = outlineMarker(after, green, `\u26A0 Diff Marker \u2014 ${inst.name} (After)`);
-    parent.insertChild(originalIndex + 4, afterMarker);
-    const latestLabel = labelBelow(after, "Latest", green);
-    parent.insertChild(originalIndex + 5, latestLabel);
+    parent.insertChild(originalIndex + 1, wrapper);
+    const clone = inst.clone();
+    clone.swapComponent(latest);
+    wrapper.appendChild(clone);
+    clone.x = 0;
+    clone.y = 0;
+    wrapperStore.set(id, wrapper);
     return true;
   }
-  async function handleMark(id) {
-    const ok = await markOne(id);
+  async function handlePlaceLatest(id) {
+    const ok = await placeLatestOne(id);
     if (!ok) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
       return;
     }
     figma.commitUndo();
-    post({ type: "marked", id });
+    post({ type: "latest-placed", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  async function handleMarkBulk(ids) {
+  async function handlePlaceLatestBulk(ids) {
     const succeeded = [];
     for (let i = 0; i < ids.length; i++) {
       const item = store.get(ids[i]);
-      if (item) post({ type: "mark-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
-      if (await markOne(ids[i])) succeeded.push(ids[i]);
+      if (item) post({ type: "place-latest-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
+      if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
     }
     figma.commitUndo();
-    post({ type: "mark-bulk-done", ids: succeeded });
+    post({ type: "place-latest-bulk-done", ids: succeeded });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  }
+  function handleToggleLatest(id) {
+    const wrapper = wrapperStore.get(id);
+    if (!wrapper) {
+      postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
+      return;
+    }
+    wrapper.visible = !wrapper.visible;
+    figma.commitUndo();
+    post({ type: "latest-toggled", id, visible: wrapper.visible });
   }
   async function handleClearMarkers() {
     const nodes = await findAllTaggedNodes();
     const count = nodes.length;
     for (const n of nodes) n.remove();
+    wrapperStore.clear();
     figma.commitUndo();
     post({ type: "markers-cleared", count });
     post({ type: "marker-count", count: 0 });
@@ -275,11 +256,14 @@
         case "apply-bulk":
           if (msg.ids) await handleApplyBulk(msg.ids);
           break;
-        case "mark":
-          if (msg.id) await handleMark(msg.id);
+        case "place-latest":
+          if (msg.id) await handlePlaceLatest(msg.id);
           break;
-        case "mark-bulk":
-          if (msg.ids) await handleMarkBulk(msg.ids);
+        case "place-latest-bulk":
+          if (msg.ids) await handlePlaceLatestBulk(msg.ids);
+          break;
+        case "toggle-latest":
+          if (msg.id) handleToggleLatest(msg.id);
           break;
         case "jump":
           if (msg.id) handleJump(msg.id);

@@ -24,17 +24,24 @@ interface ExcludedEntry {
   reason: string;
 }
 
+const EYE_OPEN =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
+const EYE_CLOSED =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M2 2l12 12"/></svg>';
+
 const rows = new Map<string, RowData>();
 let cleanIds: string[] = [];
 let diffIds: string[] = [];
 let excluded: ExcludedEntry[] = [];
 const checked: Record<string, boolean> = {};
-const markedIds: Record<string, boolean> = {};
+// Present (true/false) once a Latest-preview has been placed for that row;
+// the value tracks its current show/hide state. Absent = not placed yet.
+const latestVisible: Record<string, boolean> = {};
 let scanning = false;
 let scanTotal = 0;
 let scanDone = 0;
 let markerCount = 0;
-let allExpanded: Record<"clean" | "diff", boolean> = { clean: false, diff: false };
+const allExpanded: Record<"clean" | "diff", boolean> = { clean: false, diff: false };
 let lastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
 
 function post(msg: Record<string, unknown>): void {
@@ -83,7 +90,7 @@ function resetToSetup(): void {
   diffIds = [];
   excluded = [];
   Object.keys(checked).forEach((k) => delete checked[k]);
-  Object.keys(markedIds).forEach((k) => delete markedIds[k]);
+  Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
   markerCount = 0;
   lastClickedIndex = null;
   show("setup");
@@ -210,7 +217,7 @@ function onScanStarted(total: number): void {
   diffIds = [];
   excluded = [];
   Object.keys(checked).forEach((k) => delete checked[k]);
-  Object.keys(markedIds).forEach((k) => delete markedIds[k]);
+  Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
   scanning = true;
   scanTotal = total;
   scanDone = 0;
@@ -263,7 +270,7 @@ function onScanFinished(cancelled: boolean): void {
   }
 }
 
-/* ---- 除外内訳 ---- */
+/* ---- 除外内訳（見た目差分なしタブの最下部に表示） ---- */
 function renderExcludedSummary(): void {
   $("excludedSummary").textContent = scanning
     ? `対象外を確認中…（現在 ${excluded.length}件）`
@@ -303,10 +310,22 @@ function previewHtml(row: RowData): string {
   return `<div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div>`;
 }
 
+function diffRowButtons(id: string): string {
+  const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
+  let placementBtn: string;
+  if (!placed) {
+    placementBtn = `<button class="ghost-btn accent" data-place-latest="${id}">最新インスタンス配置</button>`;
+  } else if (latestVisible[id]) {
+    placementBtn = `<button class="ghost-btn" data-toggle-latest="${id}">${EYE_OPEN}表示中</button>`;
+  } else {
+    placementBtn = `<button class="ghost-btn" data-toggle-latest="${id}">${EYE_CLOSED}非表示</button>`;
+  }
+  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">構わず更新</button>${placementBtn}</div>`;
+}
+
 function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): string {
   const row = rows.get(id);
   if (!row) return "";
-  const marked = kind === "diff" && markedIds[id];
 
   let caption: string;
   if (kind === "clean") caption = "更新後の見た目（差分なしのためBeforeと同一）";
@@ -318,23 +337,17 @@ function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): stri
       ? `<span class="diff-pct">差分 ${row.diffPercent.toFixed(1)}%</span>`
       : "";
 
-  let rowButtons: string;
-  if (kind === "clean") {
-    rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn accent" data-individual-update="${id}">更新する</button></div>`;
-  } else if (marked) {
-    rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn" disabled>✓ マーキング済み</button></div>`;
-  } else {
-    rowButtons = `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">構わず更新</button><button class="ghost-btn warn" data-individual-mark="${id}">マーキングする</button></div>`;
-  }
+  const rowButtons =
+    kind === "clean"
+      ? `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn accent" data-individual-update="${id}">更新する</button></div>`
+      : diffRowButtons(id);
 
-  const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${marked ? "disabled" : checked[id] ? "checked" : ""}>`;
-  const markedPill = marked ? '<span class="marked-pill">マーキング済み</span>' : "";
+  const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
 
-  return `<details class="row${justEntered ? " enter" : ""}${marked ? " is-marked" : ""}" data-id="${id}" ${allExpanded[kind] ? "open" : ""}>
+  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${allExpanded[kind] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
-      ${markedPill}
       <span class="row-trailing"><svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></span>
     </summary>
     <div class="row-detail">
@@ -387,19 +400,25 @@ function wireRowEvents(): void {
       post({ type: "apply", id: btn.getAttribute("data-individual-update") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-individual-mark]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      btn.disabled = true;
-      btn.textContent = "マーキング中…";
-      post({ type: "mark", id: btn.getAttribute("data-individual-mark") });
-    });
-  });
   document.querySelectorAll<HTMLButtonElement>("#resultView [data-individual-force]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-individual-force")!;
       openForceConfirm({ kind: "single", id, btn });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#resultView [data-place-latest]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.textContent = "配置中…";
+      post({ type: "place-latest", id: btn.getAttribute("data-place-latest") });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#resultView [data-toggle-latest]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      post({ type: "toggle-latest", id: btn.getAttribute("data-toggle-latest") });
     });
   });
 }
@@ -415,11 +434,7 @@ function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   if (e.shiftKey && lastClickedIndex && lastClickedIndex.tab === tab) {
     const from = Math.min(lastClickedIndex.index, index);
     const to = Math.max(lastClickedIndex.index, index);
-    for (let i = from; i <= to; i++) {
-      const rid = list[i];
-      if (markedIds[rid]) continue; // マーキング済みは対象外
-      checked[rid] = newState;
-    }
+    for (let i = from; i <= to; i++) checked[list[i]] = newState;
     renderTabs();
   } else {
     checked[id] = newState;
@@ -429,24 +444,20 @@ function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
 }
 
 /* ---- すべて選択・すべて解除・すべて展開/折りたたみ ---- */
-function selectableIds(tab: "clean" | "diff"): string[] {
-  const list = tab === "clean" ? cleanIds : diffIds;
-  return list.filter((id) => !markedIds[id]);
-}
-
 function bindListToolbar(tab: "clean" | "diff"): void {
+  const list = tab === "clean" ? (): string[] => cleanIds : (): string[] => diffIds;
   $(`${tab}SelectAll`).addEventListener("click", () => {
-    selectableIds(tab).forEach((id) => (checked[id] = true));
+    list().forEach((id) => (checked[id] = true));
     renderTabs();
   });
   $(`${tab}SelectNone`).addEventListener("click", () => {
-    selectableIds(tab).forEach((id) => (checked[id] = false));
+    list().forEach((id) => (checked[id] = false));
     renderTabs();
   });
   $(`${tab}ExpandToggle`).addEventListener("click", () => {
     allExpanded[tab] = !allExpanded[tab];
-    const list = document.getElementById(tab === "clean" ? "cleanList" : "diffList")!;
-    list.querySelectorAll("details").forEach((d) => {
+    const listEl = document.getElementById(tab === "clean" ? "cleanList" : "diffList")!;
+    listEl.querySelectorAll("details").forEach((d) => {
       (d as HTMLDetailsElement).open = allExpanded[tab];
     });
     updateExpandToggleLabels();
@@ -462,16 +473,21 @@ function updateExpandToggleLabels(): void {
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-  const diffChecked = diffIds.filter((id) => checked[id] && !markedIds[id]).length;
   $("updateBtnLabel").textContent = `一括更新（${cleanChecked}件）`;
   ($("updateBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
-  $("markBtnLabel").textContent = `一括マーキング（${diffChecked}件）`;
-  ($("markBtn") as HTMLButtonElement).disabled = diffChecked === 0;
-  $("forceUpdateBtnLabel").textContent = `一括で構わず更新（${diffChecked}件）`;
-  ($("forceUpdateBtn") as HTMLButtonElement).disabled = diffChecked === 0;
+
+  const placeableChecked = diffIds.filter(
+    (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
+  ).length;
+  $("placeLatestBtnLabel").textContent = `一括最新インスタンス配置（${placeableChecked}件）`;
+  ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
+
+  const forceChecked = diffIds.filter((id) => checked[id]).length;
+  $("forceUpdateBtnLabel").textContent = `一括で構わず更新（${forceChecked}件）`;
+  ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
-/* ---- 一括更新 / 一括マーキング / 一括で構わず更新 ---- */
+/* ---- 一括更新 / 一括最新インスタンス配置 / 一括で構わず更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -493,15 +509,15 @@ $("updateBtn").addEventListener("click", () => {
   post({ type: "apply-bulk", ids: targets });
 });
 
-$("markBtn").addEventListener("click", () => {
-  const targets = diffIds.filter((id) => checked[id] && !markedIds[id]);
+$("placeLatestBtn").addEventListener("click", () => {
+  const targets = diffIds.filter((id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id));
   if (targets.length === 0) return;
-  showBulkBusy("マーキングしています");
-  post({ type: "mark-bulk", ids: targets });
+  showBulkBusy("最新インスタンスを配置しています");
+  post({ type: "place-latest-bulk", ids: targets });
 });
 
 $("forceUpdateBtn").addEventListener("click", () => {
-  const targets = diffIds.filter((id) => checked[id] && !markedIds[id]);
+  const targets = diffIds.filter((id) => checked[id]);
   if (targets.length === 0) return;
   openForceConfirm({ kind: "bulk", ids: targets });
 });
@@ -511,7 +527,7 @@ function removeResolvedId(id: string): void {
   diffIds = diffIds.filter((x) => x !== id);
   rows.delete(id);
   delete checked[id];
-  delete markedIds[id];
+  delete latestVisible[id];
 }
 
 function onApplied(id: string): void {
@@ -529,23 +545,26 @@ function onApplyBulkDone(ids: string[]): void {
   setChromeSub("検出完了");
 }
 
-function onMarked(id: string): void {
+function onLatestPlaced(id: string): void {
   const row = rows.get(id);
-  markedIds[id] = true;
-  checked[id] = false;
+  latestVisible[id] = true;
   renderTabs();
-  showToast(`「${row?.name ?? id}」をマーキングしました`);
+  showToast(`「${row?.name ?? id}」に最新インスタンスを重ねて配置しました`);
 }
 
-function onMarkBulkDone(ids: string[]): void {
+function onLatestPlacedBulk(ids: string[]): void {
   ids.forEach((id) => {
-    markedIds[id] = true;
-    checked[id] = false;
+    latestVisible[id] = true;
   });
   renderTabs();
   show("result");
-  showToast(`${ids.length}件をマーキングしました`);
+  showToast(`${ids.length}件に最新インスタンスを配置しました`);
   setChromeSub("検出完了");
+}
+
+function onLatestToggled(id: string, visible: boolean): void {
+  latestVisible[id] = visible;
+  renderTabs();
 }
 
 /* ---- 構わず更新の確認ダイアログ ---- */
@@ -579,7 +598,7 @@ $("modalConfirm").addEventListener("click", () => {
   pendingForce = null;
 });
 
-/* ---- マーカー管理 ---- */
+/* ---- マーカー（配置済みLatestプレビュー）管理 ---- */
 function updateMarkerStrip(): void {
   const strip = $("markerStrip");
   strip.classList.toggle("hidden", markerCount === 0);
@@ -625,17 +644,20 @@ window.onmessage = (event: MessageEvent) => {
     case "apply-bulk-done":
       onApplyBulkDone(msg.ids);
       break;
-    case "marked":
-      onMarked(msg.id);
+    case "latest-placed":
+      onLatestPlaced(msg.id);
       break;
-    case "mark-bulk-progress":
-      onBulkProgress("マーキングしています", msg.name, msg.index, msg.total);
+    case "place-latest-bulk-progress":
+      onBulkProgress("最新インスタンスを配置しています", msg.name, msg.index, msg.total);
       break;
-    case "mark-bulk-done":
-      onMarkBulkDone(msg.ids);
+    case "place-latest-bulk-done":
+      onLatestPlacedBulk(msg.ids);
+      break;
+    case "latest-toggled":
+      onLatestToggled(msg.id, msg.visible);
       break;
     case "markers-cleared":
-      showToast(`マーカーとAfterインスタンスを${msg.count}件削除しました`);
+      showToast(`最新インスタンス（プレビュー）を${msg.count}件削除しました`);
       break;
     case "marker-count":
       setMarkerCount(msg.count);
