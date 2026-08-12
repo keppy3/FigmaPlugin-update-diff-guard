@@ -302,6 +302,10 @@ async function handlePlaceLatest(id: string): Promise<void> {
   figma.commitUndo();
   post({ type: "latest-placed", id });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  // Individual placement (unlike bulk) jumps the canvas straight to the
+  // new preview so the user can see it without hunting for it.
+  const wrapper = wrapperStore.get(id);
+  if (wrapper) jumpToNode(wrapper);
 }
 
 async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
@@ -331,23 +335,32 @@ async function handleClearMarkers(): Promise<void> {
   const nodes = await findAllTaggedNodes();
   const count = nodes.length;
   for (const n of nodes) n.remove();
+  // Rows whose wrapper we just deleted need to revert to the "not placed"
+  // state (place button re-enabled, eye button greyed out again) rather
+  // than staying stuck showing a toggle for a wrapper that no longer
+  // exists. Only handled for plugin-initiated deletion (this action) —
+  // detecting a wrapper deleted manually via the canvas is out of scope.
+  const clearedIds = Array.from(wrapperStore.keys());
   wrapperStore.clear();
   figma.commitUndo();
-  post({ type: "markers-cleared", count });
+  post({ type: "markers-cleared", count, ids: clearedIds });
   post({ type: "marker-count", count: 0 });
 }
 
 // ---- キャンバスでジャンプ -----------------------------------------------
 
+function jumpToNode(node: SceneNode): void {
+  let p: BaseNode = node;
+  while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
+  if (p.type === "PAGE") figma.currentPage = p as PageNode;
+  figma.currentPage.selection = [node];
+  figma.viewport.scrollAndZoomIntoView([node]);
+}
+
 function handleJump(id: string): void {
   const item = store.get(id);
   if (!item) return;
-  const inst = item.instance;
-  let node: BaseNode = inst;
-  while (node.parent && node.parent.type !== "DOCUMENT") node = node.parent;
-  if (node.type === "PAGE") figma.currentPage = node as PageNode;
-  figma.currentPage.selection = [inst];
-  figma.viewport.scrollAndZoomIntoView([inst]);
+  jumpToNode(item.instance);
 }
 
 // ---- メッセージルーティング ---------------------------------------------

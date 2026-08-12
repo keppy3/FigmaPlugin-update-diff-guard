@@ -303,7 +303,7 @@
         <div class="row-list" id="cleanList"></div>
         <div class="tab-footer">
           <div class="tab-footer-actions">
-            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
+            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括処理：更新（0件）</span></button>
           </div>
         </div>
         <details class="excluded-details" id="excludedDetails">
@@ -330,8 +330,8 @@
             <button class="ghost-btn" id="clearMarkersBtn">すべて削除</button>
           </div>
           <div class="tab-footer-actions">
-            <button class="btn-big marking" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括最新インスタンス配置（0件）</span></button>
-            <button class="btn-big outline-danger" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括で構わず更新（0件）</span></button>
+            <button class="btn-big marking" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括処理：最新インスタンス配置（0件）</span></button>
+            <button class="btn-big outline-danger" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括処理：構わず更新（0件）</span></button>
           </div>
         </div>
       </div>
@@ -777,7 +777,7 @@
     });
   });
   function jumpBtnHtml(id) {
-    return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>\u30AD\u30E3\u30F3\u30D0\u30B9\u3067\u30B8\u30E3\u30F3\u30D7</button>`;
+    return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>\u30B8\u30E3\u30F3\u30D7</button>`;
   }
   function previewHtml(row) {
     if (row.status === "size-changed") {
@@ -790,15 +790,11 @@
   }
   function diffRowButtons(id) {
     const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
-    let placementBtn;
-    if (!placed) {
-      placementBtn = `<button class="ghost-btn accent" data-place-latest="${id}">\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E</button>`;
-    } else if (latestVisible[id]) {
-      placementBtn = `<button class="ghost-btn" data-toggle-latest="${id}">${EYE_OPEN}\u8868\u793A\u4E2D</button>`;
-    } else {
-      placementBtn = `<button class="ghost-btn" data-toggle-latest="${id}">${EYE_CLOSED}\u975E\u8868\u793A</button>`;
-    }
-    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u69CB\u308F\u305A\u66F4\u65B0</button>${placementBtn}</div>`;
+    const visible = placed && latestVisible[id];
+    const eyeIcon = visible ? EYE_OPEN : EYE_CLOSED;
+    const placeBtn = `<button class="ghost-btn accent" data-place-latest="${id}" ${placed ? "disabled" : ""}>\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E</button>`;
+    const toggleBtn = `<button class="ghost-btn" data-toggle-latest="${id}" ${placed ? "" : "disabled"}>${eyeIcon}\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306E\u8868\u793A</button>`;
+    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u69CB\u308F\u305A\u66F4\u65B0</button>${placeBtn}${toggleBtn}</div>`;
   }
   function rowHtml(id, kind, justEntered) {
     const row = rows.get(id);
@@ -922,15 +918,15 @@
   }
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-    $("updateBtnLabel").textContent = `\u4E00\u62EC\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
+    $("updateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
     $("updateBtn").disabled = cleanChecked === 0;
     const placeableChecked = diffIds.filter(
       (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
     ).length;
-    $("placeLatestBtnLabel").textContent = `\u4E00\u62EC\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
+    $("placeLatestBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
     $("placeLatestBtn").disabled = placeableChecked === 0;
     const forceChecked = diffIds.filter((id) => checked[id]).length;
-    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC\u3067\u69CB\u308F\u305A\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
+    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u69CB\u308F\u305A\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
     $("forceUpdateBtn").disabled = forceChecked === 0;
   }
   function showBulkBusy(label) {
@@ -1002,6 +998,11 @@
   function onLatestToggled(id, visible) {
     latestVisible[id] = visible;
     renderTabs();
+  }
+  function onMarkersCleared(ids, count) {
+    (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
+    renderTabs();
+    showToast(`\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\uFF08\u30D7\u30EC\u30D3\u30E5\u30FC\uFF09\u3092${count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
   var pendingForce = null;
   function openForceConfirm(target) {
@@ -1081,7 +1082,7 @@
         onLatestToggled(msg.id, msg.visible);
         break;
       case "markers-cleared":
-        showToast(`\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\uFF08\u30D7\u30EC\u30D3\u30E5\u30FC\uFF09\u3092${msg.count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
+        onMarkersCleared(msg.ids, msg.count);
         break;
       case "marker-count":
         setMarkerCount(msg.count);

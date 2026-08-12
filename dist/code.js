@@ -200,6 +200,8 @@
     figma.commitUndo();
     post({ type: "latest-placed", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    const wrapper = wrapperStore.get(id);
+    if (wrapper) jumpToNode(wrapper);
   }
   async function handlePlaceLatestBulk(ids) {
     const succeeded = [];
@@ -226,20 +228,23 @@
     const nodes = await findAllTaggedNodes();
     const count = nodes.length;
     for (const n of nodes) n.remove();
+    const clearedIds = Array.from(wrapperStore.keys());
     wrapperStore.clear();
     figma.commitUndo();
-    post({ type: "markers-cleared", count });
+    post({ type: "markers-cleared", count, ids: clearedIds });
     post({ type: "marker-count", count: 0 });
+  }
+  function jumpToNode(node) {
+    let p = node;
+    while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
+    if (p.type === "PAGE") figma.currentPage = p;
+    figma.currentPage.selection = [node];
+    figma.viewport.scrollAndZoomIntoView([node]);
   }
   function handleJump(id) {
     const item = store.get(id);
     if (!item) return;
-    const inst = item.instance;
-    let node = inst;
-    while (node.parent && node.parent.type !== "DOCUMENT") node = node.parent;
-    if (node.type === "PAGE") figma.currentPage = node;
-    figma.currentPage.selection = [inst];
-    figma.viewport.scrollAndZoomIntoView([inst]);
+    jumpToNode(item.instance);
   }
   figma.ui.onmessage = async (msg) => {
     try {

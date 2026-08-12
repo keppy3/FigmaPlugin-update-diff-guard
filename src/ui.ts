@@ -297,7 +297,7 @@ document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tabBtn) => {
 
 /* ---- 行の描画 ---- */
 function jumpBtnHtml(id: string): string {
-  return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>キャンバスでジャンプ</button>`;
+  return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>ジャンプ</button>`;
 }
 
 function previewHtml(row: RowData): string {
@@ -311,16 +311,16 @@ function previewHtml(row: RowData): string {
 }
 
 function diffRowButtons(id: string): string {
+  // Place-latest and the eye toggle are not mutually exclusive states —
+  // both buttons are always present; whichever doesn't apply yet is
+  // greyed out instead of being swapped out. This keeps their positions
+  // stable so the row doesn't reflow when a preview is placed.
   const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
-  let placementBtn: string;
-  if (!placed) {
-    placementBtn = `<button class="ghost-btn accent" data-place-latest="${id}">最新インスタンス配置</button>`;
-  } else if (latestVisible[id]) {
-    placementBtn = `<button class="ghost-btn" data-toggle-latest="${id}">${EYE_OPEN}表示中</button>`;
-  } else {
-    placementBtn = `<button class="ghost-btn" data-toggle-latest="${id}">${EYE_CLOSED}非表示</button>`;
-  }
-  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">構わず更新</button>${placementBtn}</div>`;
+  const visible = placed && latestVisible[id];
+  const eyeIcon = visible ? EYE_OPEN : EYE_CLOSED;
+  const placeBtn = `<button class="ghost-btn accent" data-place-latest="${id}" ${placed ? "disabled" : ""}>最新インスタンス配置</button>`;
+  const toggleBtn = `<button class="ghost-btn" data-toggle-latest="${id}" ${placed ? "" : "disabled"}>${eyeIcon}最新インスタンスの表示</button>`;
+  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">構わず更新</button>${placeBtn}${toggleBtn}</div>`;
 }
 
 function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): string {
@@ -473,21 +473,21 @@ function updateExpandToggleLabels(): void {
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-  $("updateBtnLabel").textContent = `一括更新（${cleanChecked}件）`;
+  $("updateBtnLabel").textContent = `一括処理：更新（${cleanChecked}件）`;
   ($("updateBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
 
   const placeableChecked = diffIds.filter(
     (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
   ).length;
-  $("placeLatestBtnLabel").textContent = `一括最新インスタンス配置（${placeableChecked}件）`;
+  $("placeLatestBtnLabel").textContent = `一括処理：最新インスタンス配置（${placeableChecked}件）`;
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
   const forceChecked = diffIds.filter((id) => checked[id]).length;
-  $("forceUpdateBtnLabel").textContent = `一括で構わず更新（${forceChecked}件）`;
+  $("forceUpdateBtnLabel").textContent = `一括処理：構わず更新（${forceChecked}件）`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
-/* ---- 一括更新 / 一括最新インスタンス配置 / 一括で構わず更新 ---- */
+/* ---- 一括処理：更新 / 一括処理：最新インスタンス配置 / 一括処理：構わず更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -565,6 +565,17 @@ function onLatestPlacedBulk(ids: string[]): void {
 function onLatestToggled(id: string, visible: boolean): void {
   latestVisible[id] = visible;
   renderTabs();
+}
+
+// Only fires for plugin-initiated deletion (the "すべて削除" bulk clear) —
+// a wrapper deleted manually via the canvas isn't detected. Rows named
+// here revert to "not placed" so the place button re-enables and the eye
+// button greys out again, instead of staying stuck offering a toggle for
+// a wrapper that no longer exists.
+function onMarkersCleared(ids: string[] | undefined, count: number): void {
+  (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
+  renderTabs();
+  showToast(`最新インスタンス（プレビュー）を${count}件削除しました`);
 }
 
 /* ---- 構わず更新の確認ダイアログ ---- */
@@ -657,7 +668,7 @@ window.onmessage = (event: MessageEvent) => {
       onLatestToggled(msg.id, msg.visible);
       break;
     case "markers-cleared":
-      showToast(`最新インスタンス（プレビュー）を${msg.count}件削除しました`);
+      onMarkersCleared(msg.ids, msg.count);
       break;
     case "marker-count":
       setMarkerCount(msg.count);
