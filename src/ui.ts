@@ -520,18 +520,19 @@ function updateFooterButtons(): void {
   $("placeLatestBtnLabel").textContent = `一括 Latestを重ねて配置（${placeableChecked}件）`;
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
-  const removableChecked = diffIds.filter(
-    (id) => checked[id] && Object.prototype.hasOwnProperty.call(latestVisible, id)
-  ).length;
-  $("removeLatestBulkBtnLabel").textContent = `一括 Latestを削除（${removableChecked}件）`;
-  ($("removeLatestBulkBtn") as HTMLButtonElement).disabled = removableChecked === 0;
+  // Unlike the other footer buttons, this isn't scoped to checked rows —
+  // it's a full sweep of every tagged node on every page (same as the
+  // former standalone "すべて削除", which this button absorbed), so its
+  // count and enabled state come from markerCount, not the row list.
+  $("clearAllLatestBtnLabel").textContent = `Latestをすべて削除（${markerCount}件）`;
+  ($("clearAllLatestBtn") as HTMLButtonElement).disabled = markerCount === 0;
 
   const forceChecked = diffIds.filter((id) => checked[id]).length;
   $("forceUpdateBtnLabel").textContent = `一括 このまま更新（${forceChecked}件）`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
-/* ---- 一括 更新 / 一括 Latestを重ねて配置 / 一括 Latestを削除 / 一括 このまま更新 ---- */
+/* ---- 一括 更新 / 一括 Latestを重ねて配置 / Latestをすべて削除 / 一括 このまま更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -560,10 +561,8 @@ $("placeLatestBtn").addEventListener("click", () => {
   post({ type: "place-latest-bulk", ids: targets });
 });
 
-$("removeLatestBulkBtn").addEventListener("click", () => {
-  const targets = diffIds.filter((id) => checked[id] && Object.prototype.hasOwnProperty.call(latestVisible, id));
-  if (targets.length === 0) return;
-  post({ type: "remove-latest-bulk", ids: targets });
+$("clearAllLatestBtn").addEventListener("click", () => {
+  post({ type: "clear-markers" });
 });
 
 $("forceUpdateBtn").addEventListener("click", () => {
@@ -625,17 +624,12 @@ function onLatestRemoved(id: string): void {
   showToast(`「${row?.name ?? id}」のLatestプレビューを削除しました`);
 }
 
-function onLatestRemovedBulk(ids: string[]): void {
-  ids.forEach((id) => delete latestVisible[id]);
-  renderTabs();
-  showToast(`${ids.length}件のLatestプレビューを削除しました`);
-}
-
-// Only fires for plugin-initiated deletion (the "すべて削除" bulk clear) —
-// a wrapper deleted manually via the canvas isn't detected. Rows named
-// here revert to "not placed" so the place button re-enables and the eye
-// button greys out again, instead of staying stuck offering a toggle for
-// a wrapper that no longer exists.
+// Fires for "Latestをすべて削除" — a full sweep of every tagged node on
+// every page, regardless of which rows are currently checked (or even
+// currently listed — it also catches leftovers from a previous session).
+// Rows named here revert to "not placed" so the place button re-enables,
+// instead of staying stuck offering a toggle/delete pair for a wrapper
+// that no longer exists.
 function onMarkersCleared(ids: string[] | undefined, count: number): void {
   (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
   renderTabs();
@@ -692,21 +686,14 @@ $("modalConfirm").addEventListener("click", () => {
   pendingForce = null;
 });
 
-/* ---- マーカー（配置済みLatestプレビュー）管理 ---- */
-function updateMarkerStrip(): void {
-  const strip = $("markerStrip");
-  strip.classList.toggle("hidden", markerCount === 0);
-  $("markerCount").textContent = String(markerCount);
-}
-
+/* ---- マーカー（配置済みLatestプレビュー）件数 ---- */
+// Drives only the "Latestをすべて削除" button's label/disabled state now
+// — the standalone marker-strip display + its own "すべて削除" button
+// were removed since they duplicated that button's role.
 function setMarkerCount(count: number): void {
   markerCount = count;
-  updateMarkerStrip();
+  updateFooterButtons();
 }
-
-$("clearMarkersBtn").addEventListener("click", () => {
-  post({ type: "clear-markers" });
-});
 
 /* ---- メッセージルーティング ---- */
 window.onmessage = (event: MessageEvent) => {
@@ -752,9 +739,6 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "latest-removed":
       onLatestRemoved(msg.id);
-      break;
-    case "latest-removed-bulk":
-      onLatestRemovedBulk(msg.ids);
       break;
     case "markers-cleared":
       onMarkersCleared(msg.ids, msg.count);

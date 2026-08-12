@@ -7,7 +7,8 @@
 // 見た目差分あり items — the write is identical either way), and a
 // per-instance "Latestを重ねて配置" overlay comparison tool (place a
 // Latest-preview directly on top of Current, toggle it show/hide, or
-// remove it individually/in bulk) with a pluginData-tagged cleanup utility.
+// remove it individually) with a pluginData-tagged full-sweep cleanup
+// utility ("Latestをすべて削除").
 //
 // Classification (clean vs diff) happens in ui.ts, not here — this side
 // only ever needs to know "which instance" via id, never "is it clean".
@@ -170,12 +171,16 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // clone() inserts the duplicate into the same parent, next to the
-  // original, without touching the original at all.
+  // clone() inserts the duplicate into the same parent, directly above the
+  // original in the layer stack, and preserves x/y — so left untouched, it
+  // lands exactly on top of the original instead of off to the side. That
+  // used to be offset (inst.width + 40 to the right), but during a scan of
+  // many instances scattered across the canvas, a stream of duplicates
+  // popping up next to each item read as glitchy rather than as a diff
+  // check. Landing in the same spot instead reads as a brief flash in
+  // place, which is a lot less alarming to watch.
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  clone.x = inst.x + inst.width + 40;
-  clone.y = inst.y;
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
@@ -328,30 +333,19 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-// Individual/bulk "Latestを削除" — removes just the named row's wrapper(s),
-// as opposed to handleClearMarkers() which sweeps every tagged node on
-// every page regardless of selection. The row reverts to showing the
-// "Latestを重ねて配置" button again (ui.ts infers this from the wrapper's
-// absence, same as after handleClearMarkers).
+// Individual "Latestを削除" — removes just the named row's wrapper, as
+// opposed to handleClearMarkers() which sweeps every tagged node on every
+// page regardless of selection (the bulk footer button now just triggers
+// that same full sweep, labeled "Latestをすべて削除", rather than a
+// separate selection-scoped variant — the two used to overlap in purpose).
+// The row reverts to showing the "Latestを重ねて配置" button again (ui.ts
+// infers this from the wrapper's absence, same as after handleClearMarkers).
 
 async function handleRemoveLatest(id: string): Promise<void> {
   if (!wrapperStore.has(id)) return;
   cleanupWrapper(id);
   figma.commitUndo();
   post({ type: "latest-removed", id });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
-}
-
-async function handleRemoveLatestBulk(ids: string[]): Promise<void> {
-  const succeeded: string[] = [];
-  for (const id of ids) {
-    if (wrapperStore.has(id)) {
-      cleanupWrapper(id);
-      succeeded.push(id);
-    }
-  }
-  figma.commitUndo();
-  post({ type: "latest-removed-bulk", ids: succeeded });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
@@ -435,9 +429,6 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "remove-latest":
         if (msg.id) await handleRemoveLatest(msg.id);
-        break;
-      case "remove-latest-bulk":
-        if (msg.ids) await handleRemoveLatestBulk(msg.ids);
         break;
       case "jump":
         if (msg.id) handleJump(msg.id);

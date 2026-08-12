@@ -22,7 +22,6 @@
     --row-hover: #f8f8f9;
     --danger: #d1453b;
     --danger-bg: rgba(209,69,59,0.12);
-    --magenta: #e619c2;
     --overlay: rgba(20,20,22,0.4);
   }
   @media (prefers-color-scheme: dark) {
@@ -45,7 +44,6 @@
       --row-hover: #313234;
       --danger: #ff8078;
       --danger-bg: rgba(255,128,120,0.14);
-      --magenta: #ff7fe6;
       --overlay: rgba(0,0,0,0.55);
     }
   }
@@ -54,14 +52,14 @@
     --text-muted: #a7a7ad; --text-faint: #7a7a80; --accent: #4db2ff; --accent-strong: #7ccaff;
     --accent-bg: #123049; --success: #3fd693; --success-bg: #123626; --warning: #f0b452;
     --warning-bg: #3c2c11; --warning-strong: #f0b452; --divider: #3a3b3e; --row-hover: #313234;
-    --danger: #ff8078; --danger-bg: rgba(255,128,120,0.14); --magenta: #ff7fe6; --overlay: rgba(0,0,0,0.55);
+    --danger: #ff8078; --danger-bg: rgba(255,128,120,0.14); --overlay: rgba(0,0,0,0.55);
   }
   :root[data-theme="light"] {
     --panel-bg: #ffffff; --panel-border: #e0e0e0; --chrome-bg: #fbfbfb; --text: #1b1b1b;
     --text-muted: #75757a; --text-faint: #a5a5aa; --accent: #0c8ce9; --accent-strong: #0a72bd;
     --accent-bg: #e9f4fe; --success: #17915c; --success-bg: #e7f7ef; --warning: #a3690a;
     --warning-bg: #fdf1de; --warning-strong: #d98a17; --divider: #ededee; --row-hover: #f8f8f9;
-    --danger: #d1453b; --danger-bg: rgba(209,69,59,0.12); --magenta: #e619c2; --overlay: rgba(20,20,22,0.4);
+    --danger: #d1453b; --danger-bg: rgba(209,69,59,0.12); --overlay: rgba(20,20,22,0.4);
   }
 
   * { box-sizing: border-box; }
@@ -221,10 +219,6 @@
   .excluded-reason { font-size: 10px; color: var(--text-faint); flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .tab-footer { border-top: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
-  .marker-strip { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--divider); font-size: 10.5px; color: var(--text-muted); }
-  .marker-strip svg { width: 12px; height: 12px; color: var(--magenta); flex: none; }
-  .marker-strip b { color: var(--text); }
-  .marker-strip .ghost-btn { margin-left: auto; padding: 4px 8px; font-size: 10px; }
   .tab-footer-actions { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 
   .toast {
@@ -340,16 +334,11 @@
         </div>
         <div class="row-list" id="diffList"></div>
         <div class="tab-footer">
-          <div class="marker-strip hidden" id="markerStrip">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/></svg>
-            配置中の最新インスタンス（プレビュー）: <b id="markerCount">0</b>件
-            <button class="ghost-btn" id="clearMarkersBtn">すべて削除</button>
-          </div>
           <div class="tab-footer-actions">
             <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括 このまま更新（0件）</span></button>
             <div class="btn-pair">
               <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括 Latestを重ねて配置（0件）</span></button>
-              <button class="btn-big outline-danger" id="removeLatestBulkBtn"><span id="removeLatestBulkBtnLabel">一括 Latestを削除（0件）</span></button>
+              <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">Latestをすべて削除（0件）</span></button>
             </div>
           </div>
         </div>

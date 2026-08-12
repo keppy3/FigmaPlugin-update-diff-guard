@@ -110,8 +110,6 @@
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
-    clone.x = inst.x + inst.width + 40;
-    clone.y = inst.y;
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
@@ -222,18 +220,6 @@
     post({ type: "latest-removed", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  async function handleRemoveLatestBulk(ids) {
-    const succeeded = [];
-    for (const id of ids) {
-      if (wrapperStore.has(id)) {
-        cleanupWrapper(id);
-        succeeded.push(id);
-      }
-    }
-    figma.commitUndo();
-    post({ type: "latest-removed-bulk", ids: succeeded });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
-  }
   function handleToggleLatest(id) {
     const wrapper = wrapperStore.get(id);
     if (!wrapper) {
@@ -292,9 +278,6 @@
           break;
         case "remove-latest":
           if (msg.id) await handleRemoveLatest(msg.id);
-          break;
-        case "remove-latest-bulk":
-          if (msg.ids) await handleRemoveLatestBulk(msg.ids);
           break;
         case "jump":
           if (msg.id) handleJump(msg.id);
