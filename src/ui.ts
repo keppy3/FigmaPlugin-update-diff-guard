@@ -4,19 +4,25 @@
 // bytes (or a sizeChanged flag) per instance; this file runs pixelmatch,
 // decides which tab a row belongs in, and renders it. code.ts never needs
 // to know an instance's classification — only its id.
+//
+// Diff rows always show Current and Latest side by side (no rendered diff
+// visualization) — pixelmatch is still run for diff rows whose size
+// matches, but only its pixel count is used (for the diff% badge), not its
+// output image.
 
 import pixelmatch from "pixelmatch";
 
-type RowStatus = "clean" | "diff" | "size-changed";
+type RowStatus = "clean" | "diff";
 
 interface RowData {
   id: string;
   name: string;
   status: RowStatus;
-  diffPercent?: number;
-  imageUrl?: string; // after-image (clean) or diff-image (diff)
-  currentUrl?: string; // size-changed only: before/current image
-  latestUrl?: string; // size-changed only: after/latest image
+  imageUrl?: string; // clean only: single thumbnail (Current === Latest)
+  currentUrl?: string; // diff only
+  latestUrl?: string; // diff only
+  diffPercent?: number; // diff only, present when sizes matched
+  sizeMismatch?: boolean; // diff only
 }
 
 interface ExcludedEntry {
@@ -28,6 +34,12 @@ const EYE_OPEN =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
 const EYE_CLOSED =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M2 2l12 12"/></svg>';
+const CHEVRON_SVG =
+  '<svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+const JUMP_ICON =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>';
+
+const EXCLUDED_GROUP_ID = "__excluded__"; // 対象外アコーディオンのdata-id。expandedIdsに同居させ、行の開閉と同じ仕組みで管理する
 
 const rows = new Map<string, RowData>();
 let cleanIds: string[] = [];
@@ -158,7 +170,8 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
     return {
       id: msg.id,
       name: msg.name,
-      status: "size-changed",
+      status: "diff",
+      sizeMismatch: true,
       currentUrl: msg.before ? dataUrlFromBytes(msg.before) : undefined,
       latestUrl: msg.after ? dataUrlFromBytes(msg.after) : undefined,
     };
@@ -170,30 +183,32 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
     return {
       id: msg.id,
       name: msg.name,
-      status: "size-changed",
+      status: "diff",
+      sizeMismatch: true,
       currentUrl: dataUrlFromBytes(msg.before),
       latestUrl: dataUrlFromBytes(msg.after),
     };
   }
 
   const { width, height } = before;
-  const diffCanvas = document.createElement("canvas");
-  diffCanvas.width = width;
-  diffCanvas.height = height;
-  const diffCtx = diffCanvas.getContext("2d")!;
-  const diffImageData = diffCtx.createImageData(width, height);
-
-  const numDiffPixels = pixelmatch(before.data.data, after.data.data, diffImageData.data, width, height, {
-    threshold: 0.1,
-  });
+  // Only the pixel count matters now (for the diff% badge) — the rows no
+  // longer render pixelmatch's visualized output, so there's no need to
+  // give it a real output buffer.
+  const numDiffPixels = pixelmatch(before.data.data, after.data.data, null, width, height, { threshold: 0.1 });
 
   if (numDiffPixels === 0) {
     return { id: msg.id, name: msg.name, status: "clean", imageUrl: dataUrlFromBytes(msg.after) };
   }
 
-  diffCtx.putImageData(diffImageData, 0, 0);
   const diffPercent = (numDiffPixels / (width * height)) * 100;
-  return { id: msg.id, name: msg.name, status: "diff", diffPercent, imageUrl: diffCanvas.toDataURL("image/png") };
+  return {
+    id: msg.id,
+    name: msg.name,
+    status: "diff",
+    diffPercent,
+    currentUrl: dataUrlFromBytes(msg.before),
+    latestUrl: dataUrlFromBytes(msg.after),
+  };
 }
 
 /* ---- scope radios ---- */
@@ -233,7 +248,6 @@ function onScanStarted(total: number): void {
   $("scanProgressStrip").classList.remove("hidden");
   ($("cancelScanBtn") as HTMLButtonElement).disabled = false;
   updateScanProgress();
-  renderExcludedSummary();
   renderTabs();
   setChromeSub("スキャン中…");
 }
@@ -247,7 +261,7 @@ function onScanExcluded(name: string, reason: string): void {
   excluded.push({ name, reason });
   scanDone++;
   updateScanProgress();
-  renderExcludedSummary();
+  renderTabs();
 }
 
 async function onScanItemResult(msg: ScanItemMsg): Promise<void> {
@@ -276,20 +290,6 @@ function onScanFinished(cancelled: boolean): void {
   }
 }
 
-/* ---- 除外内訳（見た目差分なしタブの最下部に表示） ---- */
-function renderExcludedSummary(): void {
-  $("excludedSummary").textContent = scanning
-    ? `対象外を確認中…（現在 ${excluded.length}件）`
-    : `対象外 ${excluded.length}件を除外済み`;
-  $("excludedList").innerHTML =
-    excluded
-      .map(
-        (e) =>
-          `<li><span class="ex-name" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}</span><span class="ex-reason">${escapeHtml(e.reason)}</span></li>`
-      )
-      .join("") || '<li class="muted">なし</li>';
-}
-
 /* ---- タブ切り替え ---- */
 document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tabBtn) => {
   tabBtn.addEventListener("click", () => {
@@ -303,49 +303,12 @@ document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tabBtn) => {
 
 /* ---- 行の描画 ---- */
 function jumpBtnHtml(id: string): string {
-  return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>ジャンプ</button>`;
+  return `<button class="ghost-btn" data-jump="${id}">${JUMP_ICON}ジャンプ</button>`;
 }
 
-function previewHtml(row: RowData): string {
-  if (row.status === "size-changed") {
-    return `<div class="size-compare">
-      <div class="size-compare-item"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="size-compare-label">Current</span></div>
-      <div class="size-compare-item"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="size-compare-label">Latest</span></div>
-    </div>`;
-  }
-  return `<div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div>`;
-}
-
-function diffRowButtons(id: string): string {
-  // Place-latest and the eye toggle are mutually exclusive: before
-  // placement only the place button shows, after placement it's replaced
-  // by the toggle button (not shown alongside it, greyed out).
-  const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
-  const eyeIcon = placed && latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
-  const placementBtn = placed
-    ? `<button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}最新インスタンスの表示</button>`
-    : `<button class="ghost-btn accent" data-place-latest="${id}">最新インスタンス配置</button>`;
-  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">このまま更新</button>${placementBtn}</div>`;
-}
-
-function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): string {
+function cleanRowHtml(id: string, justEntered: boolean): string {
   const row = rows.get(id);
   if (!row) return "";
-
-  let caption: string;
-  if (kind === "clean") caption = "更新後の見た目（差分なしのためBeforeと同一）";
-  else if (row.status === "size-changed") caption = "サイズが変更されたため、CurrentとLatestをそのまま並べて表示しています（ピクセル比較はスキップ）";
-  else caption = "pixelmatchの差分画像（副産物）をそのまま表示";
-
-  const pctBadge =
-    row.status === "diff" && row.diffPercent !== undefined
-      ? `<span class="diff-pct">差分 ${row.diffPercent.toFixed(1)}%</span>`
-      : "";
-
-  const rowButtons =
-    kind === "clean"
-      ? `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn accent" data-individual-update="${id}">更新する</button></div>`
-      : diffRowButtons(id);
 
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
 
@@ -353,12 +316,71 @@ function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): stri
     <summary class="row-summary">
       ${checkbox}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
-      <span class="row-trailing"><svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>
     <div class="row-detail">
-      <div class="preview-row">${previewHtml(row)}<div style="display:flex;flex-direction:column;gap:6px;">${pctBadge}<span class="preview-caption">${caption}</span></div></div>
-      ${rowButtons}
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest</span></div>
+        <div class="side-col"><span class="side-caption match">完全一致</span>${jumpBtnHtml(id)}</div>
+      </div>
+      <div class="row-buttons"><button class="ghost-btn accent" data-individual-update="${id}">更新する</button></div>
     </div>
+  </details>`;
+}
+
+function diffRowButtons(id: string): string {
+  // Place-latest and the eye toggle/delete pair are mutually exclusive:
+  // before placement only the place button shows, after placement it's
+  // replaced by the toggle+delete pair (not shown alongside it, greyed out).
+  const forceBtn = `<button class="ghost-btn accent" data-individual-force="${id}">このまま更新</button>`;
+  const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
+  if (!placed) {
+    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">Latestを重ねて配置</button></div>`;
+  }
+  const eyeIcon = latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
+  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">Latestを削除</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}表示/非表示</button></div>`;
+}
+
+function diffRowHtml(id: string, justEntered: boolean): string {
+  const row = rows.get(id);
+  if (!row) return "";
+
+  const sideCaption = row.sizeMismatch
+    ? `<span class="side-caption mismatch">サイズ不一致</span>`
+    : `<span class="side-caption pct">差分 ${(row.diffPercent ?? 0).toFixed(1)}%</span>`;
+
+  const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
+
+  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
+    <summary class="row-summary">
+      ${checkbox}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="row-detail">
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">Latest</span></div>
+        <div class="side-col">${sideCaption}${jumpBtnHtml(id)}</div>
+      </div>
+      ${diffRowButtons(id)}
+    </div>
+  </details>`;
+}
+
+/* ---- 対象外（見た目差分なしタブのリストに、他の行と同じアコーディオンで同居） ---- */
+function excludedRowHtml(entry: ExcludedEntry): string {
+  return `<div class="excluded-row"><span class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span><span class="excluded-reason">${escapeHtml(entry.reason)}</span></div>`;
+}
+
+function excludedGroupHtml(): string {
+  const open = expandedIds[EXCLUDED_GROUP_ID] ? " open" : "";
+  return `<details class="row" data-id="${EXCLUDED_GROUP_ID}"${open}>
+    <summary class="row-summary excluded-summary">
+      <span class="row-name">対象外・更新なし <span class="num">(${excluded.length})</span></span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="excluded-rows">${excluded.map(excludedRowHtml).join("")}</div>
   </details>`;
 }
 
@@ -371,12 +393,14 @@ function renderTabs(justEnteredId?: string): void {
   $("cleanCount").textContent = `(${cleanIds.length})`;
   $("diffCount").textContent = `(${diffIds.length})`;
 
-  $("cleanList").innerHTML = cleanIds.length
-    ? cleanIds.map((id) => rowHtml(id, "clean", id === justEnteredId)).join("")
+  let cleanHtml = cleanIds.length
+    ? cleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("")
     : emptyState("clean");
+  if (excluded.length || scanning) cleanHtml += excludedGroupHtml();
+  $("cleanList").innerHTML = cleanHtml;
 
   $("diffList").innerHTML = diffIds.length
-    ? diffIds.map((id) => rowHtml(id, "diff", id === justEnteredId)).join("")
+    ? diffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("")
     : emptyState("diff");
 
   wireRowEvents();
@@ -431,6 +455,12 @@ function wireRowEvents(): void {
       post({ type: "toggle-latest", id: btn.getAttribute("data-toggle-latest") });
     });
   });
+  document.querySelectorAll<HTMLButtonElement>("#resultView [data-remove-latest]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      post({ type: "remove-latest", id: btn.getAttribute("data-remove-latest") });
+    });
+  });
 }
 
 /* ---- チェックボックス: 通常クリック + Shiftで範囲選択 ---- */
@@ -481,21 +511,27 @@ bindListToolbar("diff");
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-  $("updateBtnLabel").textContent = `一括処理：更新（${cleanChecked}件）`;
+  $("updateBtnLabel").textContent = `一括 更新（${cleanChecked}件）`;
   ($("updateBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
 
   const placeableChecked = diffIds.filter(
     (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
   ).length;
-  $("placeLatestBtnLabel").textContent = `一括処理：最新インスタンス配置（${placeableChecked}件）`;
+  $("placeLatestBtnLabel").textContent = `一括 Latestを重ねて配置（${placeableChecked}件）`;
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
+  const removableChecked = diffIds.filter(
+    (id) => checked[id] && Object.prototype.hasOwnProperty.call(latestVisible, id)
+  ).length;
+  $("removeLatestBulkBtnLabel").textContent = `一括 Latestを削除（${removableChecked}件）`;
+  ($("removeLatestBulkBtn") as HTMLButtonElement).disabled = removableChecked === 0;
+
   const forceChecked = diffIds.filter((id) => checked[id]).length;
-  $("forceUpdateBtnLabel").textContent = `一括処理：このまま更新（${forceChecked}件）`;
+  $("forceUpdateBtnLabel").textContent = `一括 このまま更新（${forceChecked}件）`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
-/* ---- 一括処理：更新 / 一括処理：最新インスタンス配置 / 一括処理：このまま更新 ---- */
+/* ---- 一括 更新 / 一括 Latestを重ねて配置 / 一括 Latestを削除 / 一括 このまま更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -522,6 +558,12 @@ $("placeLatestBtn").addEventListener("click", () => {
   if (targets.length === 0) return;
   showBulkBusy("最新インスタンスを配置しています");
   post({ type: "place-latest-bulk", ids: targets });
+});
+
+$("removeLatestBulkBtn").addEventListener("click", () => {
+  const targets = diffIds.filter((id) => checked[id] && Object.prototype.hasOwnProperty.call(latestVisible, id));
+  if (targets.length === 0) return;
+  post({ type: "remove-latest-bulk", ids: targets });
 });
 
 $("forceUpdateBtn").addEventListener("click", () => {
@@ -558,7 +600,7 @@ function onLatestPlaced(id: string): void {
   const row = rows.get(id);
   latestVisible[id] = true;
   renderTabs();
-  showToast(`「${row?.name ?? id}」に最新インスタンスを重ねて配置しました`);
+  showToast(`「${row?.name ?? id}」にLatestを重ねて配置しました`);
 }
 
 function onLatestPlacedBulk(ids: string[]): void {
@@ -567,13 +609,26 @@ function onLatestPlacedBulk(ids: string[]): void {
   });
   renderTabs();
   show("result");
-  showToast(`${ids.length}件に最新インスタンスを配置しました`);
+  showToast(`${ids.length}件にLatestを重ねて配置しました`);
   setChromeSub("検出完了");
 }
 
 function onLatestToggled(id: string, visible: boolean): void {
   latestVisible[id] = visible;
   renderTabs();
+}
+
+function onLatestRemoved(id: string): void {
+  const row = rows.get(id);
+  delete latestVisible[id];
+  renderTabs();
+  showToast(`「${row?.name ?? id}」のLatestプレビューを削除しました`);
+}
+
+function onLatestRemovedBulk(ids: string[]): void {
+  ids.forEach((id) => delete latestVisible[id]);
+  renderTabs();
+  showToast(`${ids.length}件のLatestプレビューを削除しました`);
 }
 
 // Only fires for plugin-initiated deletion (the "すべて削除" bulk clear) —
@@ -596,6 +651,7 @@ function openForceConfirm(target: PendingForce): void {
   const count = target.kind === "single" ? 1 : target.ids.length;
   $("confirmBody").textContent =
     `${count}件のインスタンスは見た目に差分が確認されていますが、そのまま更新します。続行しますか？（Ctrl+Zでいつでも元に戻せます）`;
+  $("confirmNote").textContent = "（Latestを重ねて配置している場合、それを削除します）";
   $("confirmOverlay").classList.remove("hidden");
 }
 
@@ -677,6 +733,12 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "latest-toggled":
       onLatestToggled(msg.id, msg.visible);
+      break;
+    case "latest-removed":
+      onLatestRemoved(msg.id);
+      break;
+    case "latest-removed-bulk":
+      onLatestRemovedBulk(msg.ids);
       break;
     case "markers-cleared":
       onMarkersCleared(msg.ids, msg.count);

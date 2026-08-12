@@ -215,6 +215,25 @@
     post({ type: "place-latest-bulk-done", ids: succeeded });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
+  async function handleRemoveLatest(id) {
+    if (!wrapperStore.has(id)) return;
+    cleanupWrapper(id);
+    figma.commitUndo();
+    post({ type: "latest-removed", id });
+    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  }
+  async function handleRemoveLatestBulk(ids) {
+    const succeeded = [];
+    for (const id of ids) {
+      if (wrapperStore.has(id)) {
+        cleanupWrapper(id);
+        succeeded.push(id);
+      }
+    }
+    figma.commitUndo();
+    post({ type: "latest-removed-bulk", ids: succeeded });
+    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  }
   function handleToggleLatest(id) {
     const wrapper = wrapperStore.get(id);
     if (!wrapper) {
@@ -270,6 +289,12 @@
           break;
         case "toggle-latest":
           if (msg.id) handleToggleLatest(msg.id);
+          break;
+        case "remove-latest":
+          if (msg.id) await handleRemoveLatest(msg.id);
+          break;
+        case "remove-latest-bulk":
+          if (msg.ids) await handleRemoveLatestBulk(msg.ids);
           break;
         case "jump":
           if (msg.id) handleJump(msg.id);

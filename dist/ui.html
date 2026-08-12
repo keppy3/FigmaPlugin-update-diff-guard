@@ -21,6 +21,8 @@
     --divider: #ededee;
     --row-hover: #f8f8f9;
     --danger: #d1453b;
+    --danger-bg: rgba(209,69,59,0.12);
+    --magenta: #e619c2;
     --overlay: rgba(20,20,22,0.4);
   }
   @media (prefers-color-scheme: dark) {
@@ -42,8 +44,24 @@
       --divider: #3a3b3e;
       --row-hover: #313234;
       --danger: #ff8078;
+      --danger-bg: rgba(255,128,120,0.14);
+      --magenta: #ff7fe6;
       --overlay: rgba(0,0,0,0.55);
     }
+  }
+  :root[data-theme="dark"] {
+    --panel-bg: #2b2c2e; --panel-border: #3d3e41; --chrome-bg: #313234; --text: #f1f1f2;
+    --text-muted: #a7a7ad; --text-faint: #7a7a80; --accent: #4db2ff; --accent-strong: #7ccaff;
+    --accent-bg: #123049; --success: #3fd693; --success-bg: #123626; --warning: #f0b452;
+    --warning-bg: #3c2c11; --warning-strong: #f0b452; --divider: #3a3b3e; --row-hover: #313234;
+    --danger: #ff8078; --danger-bg: rgba(255,128,120,0.14); --magenta: #ff7fe6; --overlay: rgba(0,0,0,0.55);
+  }
+  :root[data-theme="light"] {
+    --panel-bg: #ffffff; --panel-border: #e0e0e0; --chrome-bg: #fbfbfb; --text: #1b1b1b;
+    --text-muted: #75757a; --text-faint: #a5a5aa; --accent: #0c8ce9; --accent-strong: #0a72bd;
+    --accent-bg: #e9f4fe; --success: #17915c; --success-bg: #e7f7ef; --warning: #a3690a;
+    --warning-bg: #fdf1de; --warning-strong: #d98a17; --divider: #ededee; --row-hover: #f8f8f9;
+    --danger: #d1453b; --danger-bg: rgba(209,69,59,0.12); --magenta: #e619c2; --overlay: rgba(20,20,22,0.4);
   }
 
   * { box-sizing: border-box; }
@@ -93,19 +111,21 @@
   .btn-big {
     width: 100%; height: 40px; border-radius: 8px; border: none; cursor: pointer;
     background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .btn-big:hover { background: var(--accent-strong); }
   .btn-big[disabled] { opacity: 0.42; cursor: default; background: var(--text-faint); }
-  .btn-big.marking { background: var(--warning-strong); }
-  .btn-big.marking:hover { background: #b8790c; }
-  .btn-big.outline-danger {
-    background: transparent; border: 1.5px solid var(--danger); color: var(--danger);
-    height: 36px; margin-top: 8px;
-  }
-  .btn-big.outline-danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .btn-big.outline-warning { background: transparent; border: 1.5px solid var(--warning-strong); color: var(--warning-strong); }
+  .btn-big.outline-warning:hover { background: var(--warning-bg); }
+  .btn-big.outline-warning[disabled] { opacity: 0.4; border-color: var(--text-faint); color: var(--text-faint); background: transparent; }
+  .btn-big.outline-danger { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
+  .btn-big.outline-danger:hover { background: var(--danger-bg); }
   .btn-big.outline-danger[disabled] { opacity: 0.4; border-color: var(--text-faint); color: var(--text-faint); background: transparent; }
+  /* 一括「Latestを重ねて配置」／「Latestを削除」を横並びにする組（フル幅ボタン2つを分け合う） */
+  .btn-pair { display: flex; gap: 8px; }
+  .btn-pair .btn-big { flex: 1; height: auto; min-height: 40px; padding: 6px 8px; font-size: 11px; line-height: 1.3; white-space: normal; }
 
-  /* ---- Busy (bulk 更新／マーキング only) ---- */
+  /* ---- Busy (bulk 更新／Latestを重ねて配置／このまま更新 のみ) ---- */
   .busy { padding: 30px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
   .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--divider); border-top-color: var(--accent); animation: spin 0.8s linear infinite; flex: none; }
   .spinner.sm { width: 13px; height: 13px; border-width: 2px; }
@@ -131,25 +151,11 @@
   .scan-cancel-btn:hover { background: var(--row-hover); }
   .scan-cancel-btn[disabled] { opacity: 0.5; cursor: default; }
 
-  .excluded-details { border-top: 1px solid var(--divider); flex: none; }
-  .excluded-details > summary { list-style: none; cursor: pointer; padding: 8px 14px; display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-faint); }
-  .excluded-details > summary::-webkit-details-marker { display: none; }
-  .excluded-details .chevron-sm { width: 10px; height: 10px; margin-left: auto; transition: transform 0.15s ease; }
-  .excluded-details[open] .chevron-sm { transform: rotate(180deg); }
-  /* Capped and independently scrollable — a long excluded list must never
-     grow the panel indefinitely or push the tab-footer's buttons out of
-     view; it scrolls internally within this budget instead. */
-  .excluded-list { list-style: none; margin: 0; padding: 0 14px 10px 14px; display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
-  .excluded-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 10.5px; }
-  .excluded-list .ex-name { font-weight: 600; color: var(--text-muted); flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .excluded-list .ex-reason { color: var(--text-faint); text-align: right; }
-
   .tabs { display: flex; border-bottom: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
   .tab { flex: 1; padding: 11px 8px; font-size: 12px; font-weight: 700; text-align: center; background: none; border: none; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-  .tab .tab-count { font-weight: 600; color: var(--text-faint); }
-  .tab.active .tab-count { color: var(--accent-strong); }
+  .tab .tab-count { font-weight: 600; }
 
   .tab-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .tab-panel.hidden { display: none; }
@@ -158,7 +164,6 @@
   .list-toolbar-link { font-size: 10px; font-weight: 600; color: var(--accent-strong); background: none; border: none; cursor: pointer; padding: 2px 0; }
   .list-toolbar-link:hover { text-decoration: underline; }
   .list-toolbar-sep { color: var(--divider); font-size: 10px; }
-  .list-toolbar-link.expand { color: var(--text-muted); }
   .list-toolbar-link.push-right { margin-left: auto; }
 
   .row-list { flex: 1; overflow-y: auto; min-height: 0; }
@@ -182,37 +187,45 @@
   @media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
 
   .row-detail { padding: 0 14px 14px 37px; display: flex; flex-direction: column; gap: 10px; }
-  .preview-row { display: flex; align-items: center; gap: 12px; }
+  .preview-row { display: flex; align-items: flex-start; gap: 10px; }
 
-  .preview-frame { width: 132px; height: 82px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
+  .thumb-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; }
+  .preview-frame { width: 96px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .preview-frame.size-changed { border-style: dashed; border-color: var(--danger); flex-direction: column; gap: 4px; }
-  .preview-frame.size-changed svg { width: 20px; height: 20px; color: var(--danger); }
-  .preview-frame.size-changed span { font-size: 9.5px; color: var(--danger); font-weight: 700; }
+  .thumb-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
 
-  .size-compare { display: flex; align-items: flex-start; gap: 10px; }
-  .size-compare-item { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-  .size-compare-item .preview-frame { width: 96px; height: 68px; }
-  .size-compare-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+  /* 画像右脇に縦組みで「状態バッジ」＋「ジャンプ」を置く */
+  .side-col { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-left: auto; padding-top: 2px; }
+  .side-caption { font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .side-caption.match { color: var(--success); }
+  .side-caption.pct { color: var(--warning-strong); }
+  .side-caption.mismatch { color: var(--danger); }
 
-  .diff-pct { font-size: 10.5px; font-weight: 700; color: var(--warning-strong); background: var(--warning-bg); border-radius: 5px; padding: 4px 8px; align-self: flex-start; }
-  .preview-caption { font-size: 9.5px; color: var(--text-faint); max-width: 160px; }
-
-  .ghost-btn { font-size: 10.5px; font-weight: 600; color: var(--text); background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 9px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .ghost-btn { font-size: 10.5px; font-weight: 600; color: var(--text); background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 9px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
   .ghost-btn:hover { background: var(--row-hover); }
   .ghost-btn[disabled] { opacity: 0.55; cursor: default; background: var(--row-hover); }
-  .ghost-btn svg { width: 11px; height: 11px; }
+  .ghost-btn svg { width: 11px; height: 11px; flex: none; }
   .ghost-btn.accent { color: var(--accent-strong); border-color: var(--accent); }
   .ghost-btn.warn { color: var(--warning-strong); border-color: var(--warning-strong); }
   .ghost-btn.danger { color: var(--danger); border-color: var(--danger); }
   .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 
+  /* ---- 対象外（見た目差分なしタブのリスト内、他の行と同じアコーディオンで折りたたみ。
+     デフォルト折りたたみ。チェックボックスは持たない） ---- */
+  .excluded-summary { color: var(--text-faint); }
+  .excluded-summary .row-name { color: inherit; font-weight: 700; }
+  .excluded-rows { display: flex; flex-direction: column; padding-bottom: 4px; }
+  .excluded-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 14px 7px 37px; border-top: 1px solid var(--divider); }
+  .excluded-row:first-child { border-top: none; }
+  .excluded-row .row-name { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+  .excluded-reason { font-size: 10px; color: var(--text-faint); flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   .tab-footer { border-top: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
   .marker-strip { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--divider); font-size: 10.5px; color: var(--text-muted); }
-  .marker-strip svg { width: 12px; height: 12px; color: var(--warning-strong); flex: none; }
+  .marker-strip svg { width: 12px; height: 12px; color: var(--magenta); flex: none; }
   .marker-strip b { color: var(--text); }
   .marker-strip .ghost-btn { margin-left: auto; padding: 4px 8px; font-size: 10px; }
-  .tab-footer-actions { padding: 12px 14px; }
+  .tab-footer-actions { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 
   .toast {
     position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%) translateY(8px);
@@ -236,6 +249,7 @@
   .modal-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
   .modal-title svg { width: 14px; height: 14px; color: var(--danger); flex: none; }
   .modal-body { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+  .modal-note { font-size: 10.5px; color: var(--magenta); line-height: 1.5; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   .modal-actions .btn-big { width: auto; height: 32px; padding: 0 16px; font-size: 11px; }
 </style>
@@ -272,7 +286,7 @@
       <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
     </div>
 
-    <!-- 一括「更新」／一括「最新インスタンス配置」実行時のみのビジー画面 -->
+    <!-- 一括「更新」／一括「Latestを重ねて配置」／一括「このまま更新」実行時のみのビジー画面 -->
     <div class="busy hidden" id="busyView">
       <div class="spinner"></div>
       <div class="busy-label" id="busyLabel">更新しています</div>
@@ -293,8 +307,8 @@
       </div>
 
       <div class="tabs">
-        <button class="tab active" data-tab="clean">見た目差分なし <span class="tab-count" id="cleanCount">(0)</span></button>
-        <button class="tab" data-tab="diff">見た目差分あり <span class="tab-count" id="diffCount">(0)</span></button>
+        <button class="tab active" data-tab="clean">✅️ 見た目差分なし <span class="tab-count" id="cleanCount">(0)</span></button>
+        <button class="tab" data-tab="diff">⚠️ 見た目差分あり <span class="tab-count" id="diffCount">(0)</span></button>
       </div>
 
       <div class="tab-panel" data-panel="clean">
@@ -302,20 +316,14 @@
           <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
           <span class="list-toolbar-sep">|</span>
           <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
-          <button class="list-toolbar-link expand push-right" id="cleanExpandAll">すべて展開</button>
-          <button class="list-toolbar-link expand" id="cleanCollapseAll">すべて折りたたむ</button>
+          <button class="list-toolbar-link push-right" id="cleanExpandAll">すべて展開</button>
+          <span class="list-toolbar-sep">|</span>
+          <button class="list-toolbar-link" id="cleanCollapseAll">すべて折りたたむ</button>
         </div>
         <div class="row-list" id="cleanList"></div>
-        <details class="excluded-details" id="excludedDetails">
-          <summary>
-            <span id="excludedSummary">対象外を確認中…</span>
-            <svg class="chevron-sm" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>
-          </summary>
-          <ul class="excluded-list" id="excludedList"></ul>
-        </details>
         <div class="tab-footer">
           <div class="tab-footer-actions">
-            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括処理：更新（0件）</span></button>
+            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括 更新（0件）</span></button>
           </div>
         </div>
       </div>
@@ -325,8 +333,9 @@
           <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
           <span class="list-toolbar-sep">|</span>
           <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
-          <button class="list-toolbar-link expand push-right" id="diffExpandAll">すべて展開</button>
-          <button class="list-toolbar-link expand" id="diffCollapseAll">すべて折りたたむ</button>
+          <button class="list-toolbar-link push-right" id="diffExpandAll">すべて展開</button>
+          <span class="list-toolbar-sep">|</span>
+          <button class="list-toolbar-link" id="diffCollapseAll">すべて折りたたむ</button>
         </div>
         <div class="row-list" id="diffList"></div>
         <div class="tab-footer">
@@ -336,8 +345,11 @@
             <button class="ghost-btn" id="clearMarkersBtn">すべて削除</button>
           </div>
           <div class="tab-footer-actions">
-            <button class="btn-big marking" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括処理：最新インスタンス配置（0件）</span></button>
-            <button class="btn-big outline-danger" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括処理：このまま更新（0件）</span></button>
+            <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括 このまま更新（0件）</span></button>
+            <div class="btn-pair">
+              <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括 Latestを重ねて配置（0件）</span></button>
+              <button class="btn-big outline-danger" id="removeLatestBulkBtn"><span id="removeLatestBulkBtnLabel">一括 Latestを削除（0件）</span></button>
+            </div>
           </div>
         </div>
       </div>
@@ -354,6 +366,7 @@
         差分を確認せず更新します
       </div>
       <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-note" id="confirmNote"></div>
       <div class="modal-actions">
         <button class="ghost-btn" id="modalCancel">キャンセル</button>
         <button class="btn-big" id="modalConfirm">続行</button>
@@ -570,6 +583,9 @@
   var import_pixelmatch = __toESM(require_pixelmatch());
   var EYE_OPEN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
   var EYE_CLOSED = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M2 2l12 12"/></svg>';
+  var CHEVRON_SVG = '<svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+  var JUMP_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>';
+  var EXCLUDED_GROUP_ID = "__excluded__";
   var rows = /* @__PURE__ */ new Map();
   var cleanIds = [];
   var diffIds = [];
@@ -668,7 +684,8 @@
       return {
         id: msg.id,
         name: msg.name,
-        status: "size-changed",
+        status: "diff",
+        sizeMismatch: true,
         currentUrl: msg.before ? dataUrlFromBytes(msg.before) : void 0,
         latestUrl: msg.after ? dataUrlFromBytes(msg.after) : void 0
       };
@@ -679,26 +696,26 @@
       return {
         id: msg.id,
         name: msg.name,
-        status: "size-changed",
+        status: "diff",
+        sizeMismatch: true,
         currentUrl: dataUrlFromBytes(msg.before),
         latestUrl: dataUrlFromBytes(msg.after)
       };
     }
     const { width, height } = before;
-    const diffCanvas = document.createElement("canvas");
-    diffCanvas.width = width;
-    diffCanvas.height = height;
-    const diffCtx = diffCanvas.getContext("2d");
-    const diffImageData = diffCtx.createImageData(width, height);
-    const numDiffPixels = (0, import_pixelmatch.default)(before.data.data, after.data.data, diffImageData.data, width, height, {
-      threshold: 0.1
-    });
+    const numDiffPixels = (0, import_pixelmatch.default)(before.data.data, after.data.data, null, width, height, { threshold: 0.1 });
     if (numDiffPixels === 0) {
       return { id: msg.id, name: msg.name, status: "clean", imageUrl: dataUrlFromBytes(msg.after) };
     }
-    diffCtx.putImageData(diffImageData, 0, 0);
     const diffPercent = numDiffPixels / (width * height) * 100;
-    return { id: msg.id, name: msg.name, status: "diff", diffPercent, imageUrl: diffCanvas.toDataURL("image/png") };
+    return {
+      id: msg.id,
+      name: msg.name,
+      status: "diff",
+      diffPercent,
+      currentUrl: dataUrlFromBytes(msg.before),
+      latestUrl: dataUrlFromBytes(msg.after)
+    };
   }
   $("radioGroup").addEventListener("change", (e) => {
     const target = e.target;
@@ -731,7 +748,6 @@
     $("scanProgressStrip").classList.remove("hidden");
     $("cancelScanBtn").disabled = false;
     updateScanProgress();
-    renderExcludedSummary();
     renderTabs();
     setChromeSub("\u30B9\u30AD\u30E3\u30F3\u4E2D\u2026");
   }
@@ -743,7 +759,7 @@
     excluded.push({ name, reason });
     scanDone++;
     updateScanProgress();
-    renderExcludedSummary();
+    renderTabs();
   }
   async function onScanItemResult(msg) {
     const row = await processDiff(msg);
@@ -769,12 +785,6 @@
       renderTabs();
     }
   }
-  function renderExcludedSummary() {
-    $("excludedSummary").textContent = scanning ? `\u5BFE\u8C61\u5916\u3092\u78BA\u8A8D\u4E2D\u2026\uFF08\u73FE\u5728 ${excluded.length}\u4EF6\uFF09` : `\u5BFE\u8C61\u5916 ${excluded.length}\u4EF6\u3092\u9664\u5916\u6E08\u307F`;
-    $("excludedList").innerHTML = excluded.map(
-      (e) => `<li><span class="ex-name" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}</span><span class="ex-reason">${escapeHtml(e.reason)}</span></li>`
-    ).join("") || '<li class="muted">\u306A\u3057</li>';
-  }
   document.querySelectorAll(".tab").forEach((tabBtn) => {
     tabBtn.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tabBtn));
@@ -785,43 +795,69 @@
     });
   });
   function jumpBtnHtml(id) {
-    return `<button class="ghost-btn" data-jump="${id}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>\u30B8\u30E3\u30F3\u30D7</button>`;
+    return `<button class="ghost-btn" data-jump="${id}">${JUMP_ICON}\u30B8\u30E3\u30F3\u30D7</button>`;
   }
-  function previewHtml(row) {
-    if (row.status === "size-changed") {
-      return `<div class="size-compare">
-      <div class="size-compare-item"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="size-compare-label">Current</span></div>
-      <div class="size-compare-item"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="size-compare-label">Latest</span></div>
-    </div>`;
-    }
-    return `<div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div>`;
-  }
-  function diffRowButtons(id) {
-    const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
-    const eyeIcon = placed && latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
-    const placementBtn = placed ? `<button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306E\u8868\u793A</button>` : `<button class="ghost-btn accent" data-place-latest="${id}">\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E</button>`;
-    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>${placementBtn}</div>`;
-  }
-  function rowHtml(id, kind, justEntered) {
+  function cleanRowHtml(id, justEntered) {
     const row = rows.get(id);
     if (!row) return "";
-    let caption;
-    if (kind === "clean") caption = "\u66F4\u65B0\u5F8C\u306E\u898B\u305F\u76EE\uFF08\u5DEE\u5206\u306A\u3057\u306E\u305F\u3081Before\u3068\u540C\u4E00\uFF09";
-    else if (row.status === "size-changed") caption = "\u30B5\u30A4\u30BA\u304C\u5909\u66F4\u3055\u308C\u305F\u305F\u3081\u3001Current\u3068Latest\u3092\u305D\u306E\u307E\u307E\u4E26\u3079\u3066\u8868\u793A\u3057\u3066\u3044\u307E\u3059\uFF08\u30D4\u30AF\u30BB\u30EB\u6BD4\u8F03\u306F\u30B9\u30AD\u30C3\u30D7\uFF09";
-    else caption = "pixelmatch\u306E\u5DEE\u5206\u753B\u50CF\uFF08\u526F\u7523\u7269\uFF09\u3092\u305D\u306E\u307E\u307E\u8868\u793A";
-    const pctBadge = row.status === "diff" && row.diffPercent !== void 0 ? `<span class="diff-pct">\u5DEE\u5206 ${row.diffPercent.toFixed(1)}%</span>` : "";
-    const rowButtons = kind === "clean" ? `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn accent" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>` : diffRowButtons(id);
     const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
     return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
-      <span class="row-trailing"><svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>
     <div class="row-detail">
-      <div class="preview-row">${previewHtml(row)}<div style="display:flex;flex-direction:column;gap:6px;">${pctBadge}<span class="preview-caption">${caption}</span></div></div>
-      ${rowButtons}
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest</span></div>
+        <div class="side-col"><span class="side-caption match">\u5B8C\u5168\u4E00\u81F4</span>${jumpBtnHtml(id)}</div>
+      </div>
+      <div class="row-buttons"><button class="ghost-btn accent" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>
     </div>
+  </details>`;
+  }
+  function diffRowButtons(id) {
+    const forceBtn = `<button class="ghost-btn accent" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>`;
+    const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
+    if (!placed) {
+      return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">Latest\u3092\u91CD\u306D\u3066\u914D\u7F6E</button></div>`;
+    }
+    const eyeIcon = latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
+    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">Latest\u3092\u524A\u9664</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}\u8868\u793A/\u975E\u8868\u793A</button></div>`;
+  }
+  function diffRowHtml(id, justEntered) {
+    var _a;
+    const row = rows.get(id);
+    if (!row) return "";
+    const sideCaption = row.sizeMismatch ? `<span class="side-caption mismatch">\u30B5\u30A4\u30BA\u4E0D\u4E00\u81F4</span>` : `<span class="side-caption pct">\u5DEE\u5206 ${((_a = row.diffPercent) != null ? _a : 0).toFixed(1)}%</span>`;
+    const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
+    return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
+    <summary class="row-summary">
+      ${checkbox}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="row-detail">
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">Latest</span></div>
+        <div class="side-col">${sideCaption}${jumpBtnHtml(id)}</div>
+      </div>
+      ${diffRowButtons(id)}
+    </div>
+  </details>`;
+  }
+  function excludedRowHtml(entry) {
+    return `<div class="excluded-row"><span class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span><span class="excluded-reason">${escapeHtml(entry.reason)}</span></div>`;
+  }
+  function excludedGroupHtml() {
+    const open = expandedIds[EXCLUDED_GROUP_ID] ? " open" : "";
+    return `<details class="row" data-id="${EXCLUDED_GROUP_ID}"${open}>
+    <summary class="row-summary excluded-summary">
+      <span class="row-name">\u5BFE\u8C61\u5916\u30FB\u66F4\u65B0\u306A\u3057 <span class="num">(${excluded.length})</span></span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="excluded-rows">${excluded.map(excludedRowHtml).join("")}</div>
   </details>`;
   }
   function emptyState(kind) {
@@ -831,8 +867,10 @@
   function renderTabs(justEnteredId) {
     $("cleanCount").textContent = `(${cleanIds.length})`;
     $("diffCount").textContent = `(${diffIds.length})`;
-    $("cleanList").innerHTML = cleanIds.length ? cleanIds.map((id) => rowHtml(id, "clean", id === justEnteredId)).join("") : emptyState("clean");
-    $("diffList").innerHTML = diffIds.length ? diffIds.map((id) => rowHtml(id, "diff", id === justEnteredId)).join("") : emptyState("diff");
+    let cleanHtml = cleanIds.length ? cleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("") : emptyState("clean");
+    if (excluded.length || scanning) cleanHtml += excludedGroupHtml();
+    $("cleanList").innerHTML = cleanHtml;
+    $("diffList").innerHTML = diffIds.length ? diffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("") : emptyState("diff");
     wireRowEvents();
     updateFooterButtons();
   }
@@ -884,6 +922,12 @@
         post({ type: "toggle-latest", id: btn.getAttribute("data-toggle-latest") });
       });
     });
+    document.querySelectorAll("#resultView [data-remove-latest]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        post({ type: "remove-latest", id: btn.getAttribute("data-remove-latest") });
+      });
+    });
   }
   function handleCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");
@@ -925,15 +969,20 @@
   bindListToolbar("diff");
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-    $("updateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
+    $("updateBtnLabel").textContent = `\u4E00\u62EC \u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
     $("updateBtn").disabled = cleanChecked === 0;
     const placeableChecked = diffIds.filter(
       (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
     ).length;
-    $("placeLatestBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
+    $("placeLatestBtnLabel").textContent = `\u4E00\u62EC Latest\u3092\u91CD\u306D\u3066\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
     $("placeLatestBtn").disabled = placeableChecked === 0;
+    const removableChecked = diffIds.filter(
+      (id) => checked[id] && Object.prototype.hasOwnProperty.call(latestVisible, id)
+    ).length;
+    $("removeLatestBulkBtnLabel").textContent = `\u4E00\u62EC Latest\u3092\u524A\u9664\uFF08${removableChecked}\u4EF6\uFF09`;
+    $("removeLatestBulkBtn").disabled = removableChecked === 0;
     const forceChecked = diffIds.filter((id) => checked[id]).length;
-    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u3053\u306E\u307E\u307E\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
+    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC \u3053\u306E\u307E\u307E\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
     $("forceUpdateBtn").disabled = forceChecked === 0;
   }
   function showBulkBusy(label) {
@@ -959,6 +1008,11 @@
     if (targets.length === 0) return;
     showBulkBusy("\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059");
     post({ type: "place-latest-bulk", ids: targets });
+  });
+  $("removeLatestBulkBtn").addEventListener("click", () => {
+    const targets = diffIds.filter((id) => checked[id] && Object.prototype.hasOwnProperty.call(latestVisible, id));
+    if (targets.length === 0) return;
+    post({ type: "remove-latest-bulk", ids: targets });
   });
   $("forceUpdateBtn").addEventListener("click", () => {
     const targets = diffIds.filter((id) => checked[id]);
@@ -992,7 +1046,7 @@
     const row = rows.get(id);
     latestVisible[id] = true;
     renderTabs();
-    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306B\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u307E\u3057\u305F`);
+    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306BLatest\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u307E\u3057\u305F`);
   }
   function onLatestPlacedBulk(ids) {
     ids.forEach((id) => {
@@ -1000,12 +1054,24 @@
     });
     renderTabs();
     show("result");
-    showToast(`${ids.length}\u4EF6\u306B\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u307E\u3057\u305F`);
+    showToast(`${ids.length}\u4EF6\u306BLatest\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u307E\u3057\u305F`);
     setChromeSub("\u691C\u51FA\u5B8C\u4E86");
   }
   function onLatestToggled(id, visible) {
     latestVisible[id] = visible;
     renderTabs();
+  }
+  function onLatestRemoved(id) {
+    var _a;
+    const row = rows.get(id);
+    delete latestVisible[id];
+    renderTabs();
+    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306ELatest\u30D7\u30EC\u30D3\u30E5\u30FC\u3092\u524A\u9664\u3057\u307E\u3057\u305F`);
+  }
+  function onLatestRemovedBulk(ids) {
+    ids.forEach((id) => delete latestVisible[id]);
+    renderTabs();
+    showToast(`${ids.length}\u4EF6\u306ELatest\u30D7\u30EC\u30D3\u30E5\u30FC\u3092\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
   function onMarkersCleared(ids, count) {
     (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
@@ -1017,6 +1083,7 @@
     pendingForce = target;
     const count = target.kind === "single" ? 1 : target.ids.length;
     $("confirmBody").textContent = `${count}\u4EF6\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306F\u898B\u305F\u76EE\u306B\u5DEE\u5206\u304C\u78BA\u8A8D\u3055\u308C\u3066\u3044\u307E\u3059\u304C\u3001\u305D\u306E\u307E\u307E\u66F4\u65B0\u3057\u307E\u3059\u3002\u7D9A\u884C\u3057\u307E\u3059\u304B\uFF1F\uFF08Ctrl+Z\u3067\u3044\u3064\u3067\u3082\u5143\u306B\u623B\u305B\u307E\u3059\uFF09`;
+    $("confirmNote").textContent = "\uFF08Latest\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u3066\u3044\u308B\u5834\u5408\u3001\u305D\u308C\u3092\u524A\u9664\u3057\u307E\u3059\uFF09";
     $("confirmOverlay").classList.remove("hidden");
   }
   $("modalCancel").addEventListener("click", () => {
@@ -1088,6 +1155,12 @@
         break;
       case "latest-toggled":
         onLatestToggled(msg.id, msg.visible);
+        break;
+      case "latest-removed":
+        onLatestRemoved(msg.id);
+        break;
+      case "latest-removed-bulk":
+        onLatestRemovedBulk(msg.ids);
         break;
       case "markers-cleared":
         onMarkersCleared(msg.ids, msg.count);

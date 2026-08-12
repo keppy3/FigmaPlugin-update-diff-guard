@@ -5,9 +5,9 @@
 // user undo can't reach further back than the item in flight), individual
 // + bulk update for 見た目差分なし items (also reused for "このまま更新" on
 // 見た目差分あり items — the write is identical either way), and a
-// per-instance "最新インスタンス配置" overlay comparison tool (place a
-// Latest-preview directly on top of Current, toggle it show/hide) with a
-// pluginData-tagged cleanup utility.
+// per-instance "Latestを重ねて配置" overlay comparison tool (place a
+// Latest-preview directly on top of Current, toggle it show/hide, or
+// remove it individually/in bulk) with a pluginData-tagged cleanup utility.
 //
 // Classification (clean vs diff) happens in ui.ts, not here — this side
 // only ever needs to know "which instance" via id, never "is it clean".
@@ -253,7 +253,7 @@ async function handleApplyBulk(ids: string[]): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-// ---- 最新インスタンス配置（見た目差分あり） ------------------------------
+// ---- Latestを重ねて配置（見た目差分あり） ------------------------------
 //
 // Places the Latest instance exactly on top of Current (same x/y, next
 // sibling so it renders above), wrapped in a frame that carries a thick
@@ -322,6 +322,33 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
   }
   figma.commitUndo();
   post({ type: "place-latest-bulk-done", ids: succeeded });
+  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+}
+
+// Individual/bulk "Latestを削除" — removes just the named row's wrapper(s),
+// as opposed to handleClearMarkers() which sweeps every tagged node on
+// every page regardless of selection. The row reverts to showing the
+// "Latestを重ねて配置" button again (ui.ts infers this from the wrapper's
+// absence, same as after handleClearMarkers).
+
+async function handleRemoveLatest(id: string): Promise<void> {
+  if (!wrapperStore.has(id)) return;
+  cleanupWrapper(id);
+  figma.commitUndo();
+  post({ type: "latest-removed", id });
+  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+}
+
+async function handleRemoveLatestBulk(ids: string[]): Promise<void> {
+  const succeeded: string[] = [];
+  for (const id of ids) {
+    if (wrapperStore.has(id)) {
+      cleanupWrapper(id);
+      succeeded.push(id);
+    }
+  }
+  figma.commitUndo();
+  post({ type: "latest-removed-bulk", ids: succeeded });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
@@ -401,6 +428,12 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "toggle-latest":
         if (msg.id) handleToggleLatest(msg.id);
+        break;
+      case "remove-latest":
+        if (msg.id) await handleRemoveLatest(msg.id);
+        break;
+      case "remove-latest-bulk":
+        if (msg.ids) await handleRemoveLatestBulk(msg.ids);
         break;
       case "jump":
         if (msg.id) handleJump(msg.id);
