@@ -171,42 +171,53 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // clone() inserts the duplicate into the same parent as the original and
-  // copies its x/y — which sounds like it'd land on top of it, but x/y are
-  // relative to that parent. If the parent uses Auto Layout (or has its
-  // own rotation/scale), the layout engine repositions/reflows the new
-  // sibling instead of stacking it on the original, which is what caused
-  // candidates to flicker in unrelated spots during a scan. Reparenting to
-  // the instance's own page sidesteps any such ancestor entirely — a
-  // page's x/y space *is* absolute, so copying inst's absoluteBoundingBox
-  // origin lands the candidate exactly on top of the original regardless
-  // of what its real parent does with layout.
+  // Same technique placeLatestOne's wrapper Frame already relies on
+  // successfully (§6.7): stay in the same parent as the original and copy
+  // its x/y directly — same container + matching relative coordinates
+  // means matching visual position, regardless of what that parent's
+  // absolute position happens to be. clone() already inserts as a sibling
+  // right after the original, so no explicit insertChild is needed here.
+  // The one addition over that pattern: force layoutPositioning to
+  // ABSOLUTE. A clone inherits layoutPositioning from its source, so if
+  // the original is an ordinary (non-absolute) child of an Auto Layout
+  // frame, the clone would otherwise inherit that too and get flowed to a
+  // layout-computed slot instead of staying where its x/y say — which is
+  // what caused candidates to flicker in unrelated spots during a scan.
+  // Setting ABSOLUTE opts it out of the flow regardless of what it
+  // inherited (harmless to set when the parent isn't Auto Layout at all).
+  // (An earlier attempt reparented the candidate to the page instead to
+  // dodge this; that adds a reparent call per scanned instance for no
+  // benefit this technique doesn't already cover.)
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
-  const box = inst.absoluteBoundingBox;
-  clone.x = box ? box.x : 0;
-  clone.y = box ? box.y : 0;
+  clone.layoutPositioning = "ABSOLUTE";
+  clone.x = inst.x;
+  clone.y = inst.y;
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
 
-  // Deliberately left visible=true: exportAsync() on a hidden node has
-  // been reported to sometimes render a blank/transparent image, which
-  // would make every "after" image a spurious diff. The candidate is
-  // removed immediately below anyway. Exported even when sizeChanged, so
-  // the UI can still show Current/Latest side by side for that case.
-  const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
-  clone.remove();
-
-  post({
-    type: "scan-item-result",
-    id: inst.id,
-    name: inst.name,
-    sizeChanged,
-    before: beforeBytes,
-    after: afterBytes,
-  });
+  try {
+    // Deliberately left visible=true: exportAsync() on a hidden node has
+    // been reported to sometimes render a blank/transparent image, which
+    // would make every "after" image a spurious diff. Exported even when
+    // sizeChanged, so the UI can still show Current/Latest side by side
+    // for that case.
+    const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+    post({
+      type: "scan-item-result",
+      id: inst.id,
+      name: inst.name,
+      sizeChanged,
+      before: beforeBytes,
+      after: afterBytes,
+    });
+  } finally {
+    // Guaranteed even if exportAsync throws above — otherwise a failed
+    // export would leave this "(diff candidate)" node stranded on the
+    // canvas instead of just excluding the instance from results.
+    clone.remove();
+  }
 }
 
 // ---- 更新（見た目差分なし・および「このまま更新」） -----------------------
