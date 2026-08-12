@@ -105,14 +105,15 @@
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function computeAndSendDiff(inst, latest) {
+    var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
-    clone.layoutPositioning = "ABSOLUTE";
-    clone.x = inst.x;
-    clone.y = inst.y;
+    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
+    clone.x = 0;
+    clone.y = 0;
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     try {

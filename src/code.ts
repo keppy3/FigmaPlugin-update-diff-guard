@@ -171,28 +171,24 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // Same technique placeLatestOne's wrapper Frame already relies on
-  // successfully (§6.7): stay in the same parent as the original and copy
-  // its x/y directly — same container + matching relative coordinates
-  // means matching visual position, regardless of what that parent's
-  // absolute position happens to be. clone() already inserts as a sibling
-  // right after the original, so no explicit insertChild is needed here.
-  // The one addition over that pattern: force layoutPositioning to
-  // ABSOLUTE. A clone inherits layoutPositioning from its source, so if
-  // the original is an ordinary (non-absolute) child of an Auto Layout
-  // frame, the clone would otherwise inherit that too and get flowed to a
-  // layout-computed slot instead of staying where its x/y say — which is
-  // what caused candidates to flicker in unrelated spots during a scan.
-  // Setting ABSOLUTE opts it out of the flow regardless of what it
-  // inherited (harmless to set when the parent isn't Auto Layout at all).
-  // (An earlier attempt reparented the candidate to the page instead to
-  // dodge this; that adds a reparent call per scanned instance for no
-  // benefit this technique doesn't already cover.)
+  // Deliberately the simplest option available: reparent the candidate to
+  // its own page and pin it at (0, 0). Two earlier attempts tried instead
+  // to make it visually overlap the original — same-parent + matching x/y,
+  // then that plus layoutPositioning = "ABSOLUTE" to escape Auto Layout —
+  // and both introduced real bugs. The second one throws when the
+  // original's parent isn't an Auto Layout frame (layoutPositioning isn't
+  // safely settable there), which aborted computeAndSendDiff before the
+  // cleanup below could run for *every* instance with a plain parent —
+  // candidates scattered and stayed on the canvas, and every item got
+  // excluded as a scan error instead of classified. A fixed absolute
+  // position needs none of that cleverness: no relative-coordinate math,
+  // no layout-mode-dependent property, nothing that can throw depending on
+  // what kind of parent the original happens to have.
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  clone.layoutPositioning = "ABSOLUTE";
-  clone.x = inst.x;
-  clone.y = inst.y;
+  (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
+  clone.x = 0;
+  clone.y = 0;
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
