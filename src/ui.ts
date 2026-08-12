@@ -41,7 +41,11 @@ let scanning = false;
 let scanTotal = 0;
 let scanDone = 0;
 let markerCount = 0;
-const allExpanded: Record<"clean" | "diff", boolean> = { clean: false, diff: false };
+// Per-row accordion open/closed state, persisted across re-renders so
+// toggling a preview, placing a latest instance, etc. don't collapse rows
+// the user manually expanded. "すべて展開"/"すべて折りたたむ" are one-shot
+// activations that stamp this map, not a passive aggregate state.
+const expandedIds: Record<string, boolean> = {};
 let lastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
 
 function post(msg: Record<string, unknown>): void {
@@ -91,6 +95,7 @@ function resetToSetup(): void {
   excluded = [];
   Object.keys(checked).forEach((k) => delete checked[k]);
   Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
+  Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
   markerCount = 0;
   lastClickedIndex = null;
   show("setup");
@@ -218,6 +223,7 @@ function onScanStarted(total: number): void {
   excluded = [];
   Object.keys(checked).forEach((k) => delete checked[k]);
   Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
+  Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
   scanning = true;
   scanTotal = total;
   scanDone = 0;
@@ -311,16 +317,15 @@ function previewHtml(row: RowData): string {
 }
 
 function diffRowButtons(id: string): string {
-  // Place-latest and the eye toggle are not mutually exclusive states —
-  // both buttons are always present; whichever doesn't apply yet is
-  // greyed out instead of being swapped out. This keeps their positions
-  // stable so the row doesn't reflow when a preview is placed.
+  // Place-latest and the eye toggle are mutually exclusive: before
+  // placement only the place button shows, after placement it's replaced
+  // by the toggle button (not shown alongside it, greyed out).
   const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
-  const visible = placed && latestVisible[id];
-  const eyeIcon = visible ? EYE_OPEN : EYE_CLOSED;
-  const placeBtn = `<button class="ghost-btn accent" data-place-latest="${id}" ${placed ? "disabled" : ""}>最新インスタンス配置</button>`;
-  const toggleBtn = `<button class="ghost-btn" data-toggle-latest="${id}" ${placed ? "" : "disabled"}>${eyeIcon}最新インスタンスの表示</button>`;
-  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">このまま更新</button>${placeBtn}${toggleBtn}</div>`;
+  const eyeIcon = placed && latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
+  const placementBtn = placed
+    ? `<button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}最新インスタンスの表示</button>`
+    : `<button class="ghost-btn accent" data-place-latest="${id}">最新インスタンス配置</button>`;
+  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">このまま更新</button>${placementBtn}</div>`;
 }
 
 function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): string {
@@ -344,7 +349,7 @@ function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): stri
 
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
 
-  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${allExpanded[kind] ? "open" : ""}>
+  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
@@ -376,10 +381,15 @@ function renderTabs(justEnteredId?: string): void {
 
   wireRowEvents();
   updateFooterButtons();
-  updateExpandToggleLabels();
 }
 
 function wireRowEvents(): void {
+  document.querySelectorAll<HTMLDetailsElement>("#resultView .row").forEach((details) => {
+    details.addEventListener("toggle", () => {
+      const id = details.getAttribute("data-id");
+      if (id) expandedIds[id] = details.open;
+    });
+  });
   document.querySelectorAll<HTMLInputElement>("#resultView .row-check").forEach((cb) => {
     cb.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -443,7 +453,7 @@ function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   lastClickedIndex = { tab, index };
 }
 
-/* ---- すべて選択・すべて解除・すべて展開/折りたたみ ---- */
+/* ---- すべて選択・すべて解除・すべて展開・すべて折りたたむ ---- */
 function bindListToolbar(tab: "clean" | "diff"): void {
   const list = tab === "clean" ? (): string[] => cleanIds : (): string[] => diffIds;
   $(`${tab}SelectAll`).addEventListener("click", () => {
@@ -454,22 +464,20 @@ function bindListToolbar(tab: "clean" | "diff"): void {
     list().forEach((id) => (checked[id] = false));
     renderTabs();
   });
-  $(`${tab}ExpandToggle`).addEventListener("click", () => {
-    allExpanded[tab] = !allExpanded[tab];
-    const listEl = document.getElementById(tab === "clean" ? "cleanList" : "diffList")!;
-    listEl.querySelectorAll("details").forEach((d) => {
-      (d as HTMLDetailsElement).open = allExpanded[tab];
-    });
-    updateExpandToggleLabels();
+  // These are one-shot activations ("expand everything right now"), not a
+  // toggle reflecting some tracked aggregate state — so they always do the
+  // same thing regardless of the current mix of open/closed rows.
+  $(`${tab}ExpandAll`).addEventListener("click", () => {
+    list().forEach((id) => (expandedIds[id] = true));
+    renderTabs();
+  });
+  $(`${tab}CollapseAll`).addEventListener("click", () => {
+    list().forEach((id) => (expandedIds[id] = false));
+    renderTabs();
   });
 }
 bindListToolbar("clean");
 bindListToolbar("diff");
-
-function updateExpandToggleLabels(): void {
-  $("cleanExpandToggle").textContent = allExpanded.clean ? "すべて折りたたむ" : "すべて展開";
-  $("diffExpandToggle").textContent = allExpanded.diff ? "すべて折りたたむ" : "すべて展開";
-}
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
@@ -528,6 +536,7 @@ function removeResolvedId(id: string): void {
   rows.delete(id);
   delete checked[id];
   delete latestVisible[id];
+  delete expandedIds[id];
 }
 
 function onApplied(id: string): void {
@@ -601,7 +610,9 @@ $("modalConfirm").addEventListener("click", () => {
   if (pendingForce.kind === "single") {
     pendingForce.btn.disabled = true;
     pendingForce.btn.textContent = "更新中…";
-    post({ type: "apply", id: pendingForce.id });
+    // Jump straight there so the user immediately sees what they just
+    // confirmed updating — code.ts does this before the write itself.
+    post({ type: "apply", id: pendingForce.id, jump: true });
   } else {
     showBulkBusy("更新しています");
     post({ type: "apply-bulk", ids: pendingForce.ids });

@@ -136,7 +136,10 @@
   .excluded-details > summary::-webkit-details-marker { display: none; }
   .excluded-details .chevron-sm { width: 10px; height: 10px; margin-left: auto; transition: transform 0.15s ease; }
   .excluded-details[open] .chevron-sm { transform: rotate(180deg); }
-  .excluded-list { list-style: none; margin: 0; padding: 0 14px 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+  /* Capped and independently scrollable — a long excluded list must never
+     grow the panel indefinitely or push the tab-footer's buttons out of
+     view; it scrolls internally within this budget instead. */
+  .excluded-list { list-style: none; margin: 0; padding: 0 14px 10px 14px; display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
   .excluded-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 10.5px; }
   .excluded-list .ex-name { font-weight: 600; color: var(--text-muted); flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .excluded-list .ex-reason { color: var(--text-faint); text-align: right; }
@@ -155,7 +158,8 @@
   .list-toolbar-link { font-size: 10px; font-weight: 600; color: var(--accent-strong); background: none; border: none; cursor: pointer; padding: 2px 0; }
   .list-toolbar-link:hover { text-decoration: underline; }
   .list-toolbar-sep { color: var(--divider); font-size: 10px; }
-  .list-toolbar-link.expand { margin-left: auto; color: var(--text-muted); }
+  .list-toolbar-link.expand { color: var(--text-muted); }
+  .list-toolbar-link.push-right { margin-left: auto; }
 
   .row-list { flex: 1; overflow-y: auto; min-height: 0; }
   .row { border-bottom: 1px solid var(--divider); }
@@ -298,14 +302,10 @@
           <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
           <span class="list-toolbar-sep">|</span>
           <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
-          <button class="list-toolbar-link expand" id="cleanExpandToggle">すべて展開</button>
+          <button class="list-toolbar-link expand push-right" id="cleanExpandAll">すべて展開</button>
+          <button class="list-toolbar-link expand" id="cleanCollapseAll">すべて折りたたむ</button>
         </div>
         <div class="row-list" id="cleanList"></div>
-        <div class="tab-footer">
-          <div class="tab-footer-actions">
-            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括処理：更新（0件）</span></button>
-          </div>
-        </div>
         <details class="excluded-details" id="excludedDetails">
           <summary>
             <span id="excludedSummary">対象外を確認中…</span>
@@ -313,6 +313,11 @@
           </summary>
           <ul class="excluded-list" id="excludedList"></ul>
         </details>
+        <div class="tab-footer">
+          <div class="tab-footer-actions">
+            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括処理：更新（0件）</span></button>
+          </div>
+        </div>
       </div>
 
       <div class="tab-panel hidden" data-panel="diff">
@@ -320,7 +325,8 @@
           <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
           <span class="list-toolbar-sep">|</span>
           <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
-          <button class="list-toolbar-link expand" id="diffExpandToggle">すべて展開</button>
+          <button class="list-toolbar-link expand push-right" id="diffExpandAll">すべて展開</button>
+          <button class="list-toolbar-link expand" id="diffCollapseAll">すべて折りたたむ</button>
         </div>
         <div class="row-list" id="diffList"></div>
         <div class="tab-footer">
@@ -574,7 +580,7 @@
   var scanTotal = 0;
   var scanDone = 0;
   var markerCount = 0;
-  var allExpanded = { clean: false, diff: false };
+  var expandedIds = {};
   var lastClickedIndex = null;
   function post(msg) {
     parent.postMessage({ pluginMessage: msg }, "*");
@@ -612,6 +618,7 @@
     excluded = [];
     Object.keys(checked).forEach((k) => delete checked[k]);
     Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
+    Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
     markerCount = 0;
     lastClickedIndex = null;
     show("setup");
@@ -715,6 +722,7 @@
     excluded = [];
     Object.keys(checked).forEach((k) => delete checked[k]);
     Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
+    Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
     scanning = true;
     scanTotal = total;
     scanDone = 0;
@@ -790,11 +798,9 @@
   }
   function diffRowButtons(id) {
     const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
-    const visible = placed && latestVisible[id];
-    const eyeIcon = visible ? EYE_OPEN : EYE_CLOSED;
-    const placeBtn = `<button class="ghost-btn accent" data-place-latest="${id}" ${placed ? "disabled" : ""}>\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E</button>`;
-    const toggleBtn = `<button class="ghost-btn" data-toggle-latest="${id}" ${placed ? "" : "disabled"}>${eyeIcon}\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306E\u8868\u793A</button>`;
-    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>${placeBtn}${toggleBtn}</div>`;
+    const eyeIcon = placed && latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
+    const placementBtn = placed ? `<button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306E\u8868\u793A</button>` : `<button class="ghost-btn accent" data-place-latest="${id}">\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E</button>`;
+    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>${placementBtn}</div>`;
   }
   function rowHtml(id, kind, justEntered) {
     const row = rows.get(id);
@@ -806,7 +812,7 @@
     const pctBadge = row.status === "diff" && row.diffPercent !== void 0 ? `<span class="diff-pct">\u5DEE\u5206 ${row.diffPercent.toFixed(1)}%</span>` : "";
     const rowButtons = kind === "clean" ? `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn accent" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>` : diffRowButtons(id);
     const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
-    return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${allExpanded[kind] ? "open" : ""}>
+    return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
@@ -829,9 +835,14 @@
     $("diffList").innerHTML = diffIds.length ? diffIds.map((id) => rowHtml(id, "diff", id === justEnteredId)).join("") : emptyState("diff");
     wireRowEvents();
     updateFooterButtons();
-    updateExpandToggleLabels();
   }
   function wireRowEvents() {
+    document.querySelectorAll("#resultView .row").forEach((details) => {
+      details.addEventListener("toggle", () => {
+        const id = details.getAttribute("data-id");
+        if (id) expandedIds[id] = details.open;
+      });
+    });
     document.querySelectorAll("#resultView .row-check").forEach((cb) => {
       cb.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -901,21 +912,17 @@
       list().forEach((id) => checked[id] = false);
       renderTabs();
     });
-    $(`${tab}ExpandToggle`).addEventListener("click", () => {
-      allExpanded[tab] = !allExpanded[tab];
-      const listEl = document.getElementById(tab === "clean" ? "cleanList" : "diffList");
-      listEl.querySelectorAll("details").forEach((d) => {
-        d.open = allExpanded[tab];
-      });
-      updateExpandToggleLabels();
+    $(`${tab}ExpandAll`).addEventListener("click", () => {
+      list().forEach((id) => expandedIds[id] = true);
+      renderTabs();
+    });
+    $(`${tab}CollapseAll`).addEventListener("click", () => {
+      list().forEach((id) => expandedIds[id] = false);
+      renderTabs();
     });
   }
   bindListToolbar("clean");
   bindListToolbar("diff");
-  function updateExpandToggleLabels() {
-    $("cleanExpandToggle").textContent = allExpanded.clean ? "\u3059\u3079\u3066\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u5C55\u958B";
-    $("diffExpandToggle").textContent = allExpanded.diff ? "\u3059\u3079\u3066\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u5C55\u958B";
-  }
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
     $("updateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
@@ -964,6 +971,7 @@
     rows.delete(id);
     delete checked[id];
     delete latestVisible[id];
+    delete expandedIds[id];
   }
   function onApplied(id) {
     var _a;
@@ -1021,7 +1029,7 @@
     if (pendingForce.kind === "single") {
       pendingForce.btn.disabled = true;
       pendingForce.btn.textContent = "\u66F4\u65B0\u4E2D\u2026";
-      post({ type: "apply", id: pendingForce.id });
+      post({ type: "apply", id: pendingForce.id, jump: true });
     } else {
       showBulkBusy("\u66F4\u65B0\u3057\u3066\u3044\u307E\u3059");
       post({ type: "apply-bulk", ids: pendingForce.ids });

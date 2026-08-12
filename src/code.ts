@@ -215,12 +215,15 @@ function cleanupWrapper(id: string): void {
   }
 }
 
-async function handleApply(id: string): Promise<void> {
+async function handleApply(id: string, jump?: boolean): Promise<void> {
   const item = store.get(id);
   if (!item) {
     postError(`対象が見つかりません: ${id}`);
     return;
   }
+  // For individual "このまま更新" only: jump before the write so the user
+  // sees what they're about to affect, not just what they just affected.
+  if (jump) jumpToNode(item.instance);
   // The one line that matters most for this whole project: swap in-place,
   // same node id, so anything (e.g. a FigJam arrow) that references this
   // node keeps working.
@@ -294,6 +297,12 @@ async function placeLatestOne(id: string): Promise<boolean> {
 }
 
 async function handlePlaceLatest(id: string): Promise<void> {
+  // Individual placement (unlike bulk) jumps the canvas first, before the
+  // wrapper even exists — Current's position is exactly where the wrapper
+  // will land, so there's no need to wait for placement to finish.
+  const item = store.get(id);
+  if (item) jumpToNode(item.instance);
+
   const ok = await placeLatestOne(id);
   if (!ok) {
     postError(`対象が見つかりません: ${id}`);
@@ -302,10 +311,6 @@ async function handlePlaceLatest(id: string): Promise<void> {
   figma.commitUndo();
   post({ type: "latest-placed", id });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
-  // Individual placement (unlike bulk) jumps the canvas straight to the
-  // new preview so the user can see it without hunting for it.
-  const wrapper = wrapperStore.get(id);
-  if (wrapper) jumpToNode(wrapper);
 }
 
 async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
@@ -370,6 +375,7 @@ interface IncomingMessage {
   scope?: ScopeMode;
   id?: string;
   ids?: string[];
+  jump?: boolean;
 }
 
 figma.ui.onmessage = async (msg: IncomingMessage) => {
@@ -382,7 +388,7 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         scanCancelled = true;
         break;
       case "apply":
-        if (msg.id) await handleApply(msg.id);
+        if (msg.id) await handleApply(msg.id, msg.jump);
         break;
       case "apply-bulk":
         if (msg.ids) await handleApplyBulk(msg.ids);

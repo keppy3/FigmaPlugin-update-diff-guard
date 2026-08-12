@@ -132,12 +132,13 @@
       wrapperStore.delete(id);
     }
   }
-  async function handleApply(id) {
+  async function handleApply(id, jump) {
     const item = store.get(id);
     if (!item) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
       return;
     }
+    if (jump) jumpToNode(item.instance);
     item.instance.swapComponent(item.latestComponent);
     cleanupWrapper(id);
     figma.commitUndo();
@@ -192,6 +193,8 @@
     return true;
   }
   async function handlePlaceLatest(id) {
+    const item = store.get(id);
+    if (item) jumpToNode(item.instance);
     const ok = await placeLatestOne(id);
     if (!ok) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
@@ -200,8 +203,6 @@
     figma.commitUndo();
     post({ type: "latest-placed", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
-    const wrapper = wrapperStore.get(id);
-    if (wrapper) jumpToNode(wrapper);
   }
   async function handlePlaceLatestBulk(ids) {
     const succeeded = [];
@@ -256,7 +257,7 @@
           scanCancelled = true;
           break;
         case "apply":
-          if (msg.id) await handleApply(msg.id);
+          if (msg.id) await handleApply(msg.id, msg.jump);
           break;
         case "apply-bulk":
           if (msg.ids) await handleApplyBulk(msg.ids);
