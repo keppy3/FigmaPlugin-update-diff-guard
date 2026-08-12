@@ -320,7 +320,7 @@ function diffRowButtons(id: string): string {
   const eyeIcon = visible ? EYE_OPEN : EYE_CLOSED;
   const placeBtn = `<button class="ghost-btn accent" data-place-latest="${id}" ${placed ? "disabled" : ""}>最新インスタンス配置</button>`;
   const toggleBtn = `<button class="ghost-btn" data-toggle-latest="${id}" ${placed ? "" : "disabled"}>${eyeIcon}最新インスタンスの表示</button>`;
-  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">構わず更新</button>${placeBtn}${toggleBtn}</div>`;
+  return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">このまま更新</button>${placeBtn}${toggleBtn}</div>`;
 }
 
 function rowHtml(id: string, kind: "clean" | "diff", justEntered: boolean): string {
@@ -483,11 +483,11 @@ function updateFooterButtons(): void {
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
   const forceChecked = diffIds.filter((id) => checked[id]).length;
-  $("forceUpdateBtnLabel").textContent = `一括処理：構わず更新（${forceChecked}件）`;
+  $("forceUpdateBtnLabel").textContent = `一括処理：このまま更新（${forceChecked}件）`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
-/* ---- 一括処理：更新 / 一括処理：最新インスタンス配置 / 一括処理：構わず更新 ---- */
+/* ---- 一括処理：更新 / 一括処理：最新インスタンス配置 / 一括処理：このまま更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -578,7 +578,7 @@ function onMarkersCleared(ids: string[] | undefined, count: number): void {
   showToast(`最新インスタンス（プレビュー）を${count}件削除しました`);
 }
 
-/* ---- 構わず更新の確認ダイアログ ---- */
+/* ---- このまま更新の確認ダイアログ ---- */
 type PendingForce = { kind: "single"; id: string; btn: HTMLButtonElement } | { kind: "bulk"; ids: string[] };
 let pendingForce: PendingForce | null = null;
 

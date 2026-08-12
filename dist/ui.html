@@ -219,7 +219,7 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* ---- 構わず更新の確認ダイアログ ---- */
+  /* ---- このまま更新の確認ダイアログ ---- */
   .modal-overlay {
     position: fixed; inset: 0; background: var(--overlay);
     display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px;
@@ -331,7 +331,7 @@
           </div>
           <div class="tab-footer-actions">
             <button class="btn-big marking" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括処理：最新インスタンス配置（0件）</span></button>
-            <button class="btn-big outline-danger" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括処理：構わず更新（0件）</span></button>
+            <button class="btn-big outline-danger" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括処理：このまま更新（0件）</span></button>
           </div>
         </div>
       </div>
@@ -794,7 +794,7 @@
     const eyeIcon = visible ? EYE_OPEN : EYE_CLOSED;
     const placeBtn = `<button class="ghost-btn accent" data-place-latest="${id}" ${placed ? "disabled" : ""}>\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E</button>`;
     const toggleBtn = `<button class="ghost-btn" data-toggle-latest="${id}" ${placed ? "" : "disabled"}>${eyeIcon}\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306E\u8868\u793A</button>`;
-    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u69CB\u308F\u305A\u66F4\u65B0</button>${placeBtn}${toggleBtn}</div>`;
+    return `<div class="row-buttons">${jumpBtnHtml(id)}<button class="ghost-btn danger" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>${placeBtn}${toggleBtn}</div>`;
   }
   function rowHtml(id, kind, justEntered) {
     const row = rows.get(id);
@@ -926,7 +926,7 @@
     $("placeLatestBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
     $("placeLatestBtn").disabled = placeableChecked === 0;
     const forceChecked = diffIds.filter((id) => checked[id]).length;
-    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u69CB\u308F\u305A\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
+    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC\u51E6\u7406\uFF1A\u3053\u306E\u307E\u307E\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
     $("forceUpdateBtn").disabled = forceChecked === 0;
   }
   function showBulkBusy(label) {

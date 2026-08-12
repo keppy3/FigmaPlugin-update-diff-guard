@@ -3,7 +3,7 @@
 // Implements Spec.md's full design: streaming scan (one message per
 // resolved instance, cancellable, one commitUndo per item so a concurrent
 // user undo can't reach further back than the item in flight), individual
-// + bulk update for 見た目差分なし items (also reused for "構わず更新" on
+// + bulk update for 見た目差分なし items (also reused for "このまま更新" on
 // 見た目差分あり items — the write is identical either way), and a
 // per-instance "最新インスタンス配置" overlay comparison tool (place a
 // Latest-preview directly on top of Current, toggle it show/hide) with a
@@ -198,9 +198,9 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
   });
 }
 
-// ---- 更新（見た目差分なし・および「構わず更新」） -----------------------
+// ---- 更新（見た目差分なし・および「このまま更新」） -----------------------
 //
-// Both the plain 更新 flow (見た目差分なしタブ) and 構わず更新
+// Both the plain 更新 flow (見た目差分なしタブ) and このまま更新
 // (見た目差分ありタブ, ignoring a known diff) end up calling exactly this
 // same code — the write itself doesn't know or care which tab the id came
 // from, only ui.ts's confirmation flow differs. If that row had a
