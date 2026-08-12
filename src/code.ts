@@ -171,16 +171,22 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // clone() inserts the duplicate into the same parent, directly above the
-  // original in the layer stack, and preserves x/y — so left untouched, it
-  // lands exactly on top of the original instead of off to the side. That
-  // used to be offset (inst.width + 40 to the right), but during a scan of
-  // many instances scattered across the canvas, a stream of duplicates
-  // popping up next to each item read as glitchy rather than as a diff
-  // check. Landing in the same spot instead reads as a brief flash in
-  // place, which is a lot less alarming to watch.
+  // clone() inserts the duplicate into the same parent as the original and
+  // copies its x/y — which sounds like it'd land on top of it, but x/y are
+  // relative to that parent. If the parent uses Auto Layout (or has its
+  // own rotation/scale), the layout engine repositions/reflows the new
+  // sibling instead of stacking it on the original, which is what caused
+  // candidates to flicker in unrelated spots during a scan. Reparenting to
+  // the instance's own page sidesteps any such ancestor entirely — a
+  // page's x/y space *is* absolute, so copying inst's absoluteBoundingBox
+  // origin lands the candidate exactly on top of the original regardless
+  // of what its real parent does with layout.
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
+  (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
+  const box = inst.absoluteBoundingBox;
+  clone.x = box ? box.x : 0;
+  clone.y = box ? box.y : 0;
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
@@ -378,10 +384,15 @@ async function handleClearMarkers(): Promise<void> {
 
 // ---- キャンバスでジャンプ -----------------------------------------------
 
-function jumpToNode(node: SceneNode): void {
+function findOwningPage(node: BaseNode): PageNode | null {
   let p: BaseNode = node;
   while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
-  if (p.type === "PAGE") figma.currentPage = p as PageNode;
+  return p.type === "PAGE" ? (p as PageNode) : null;
+}
+
+function jumpToNode(node: SceneNode): void {
+  const page = findOwningPage(node);
+  if (page) figma.currentPage = page;
   figma.currentPage.selection = [node];
   figma.viewport.scrollAndZoomIntoView([node]);
 }

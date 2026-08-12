@@ -105,11 +105,16 @@
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function computeAndSendDiff(inst, latest) {
+    var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
+    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
+    const box = inst.absoluteBoundingBox;
+    clone.x = box ? box.x : 0;
+    clone.y = box ? box.y : 0;
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
@@ -240,10 +245,14 @@
     post({ type: "markers-cleared", count, ids: clearedIds });
     post({ type: "marker-count", count: 0 });
   }
-  function jumpToNode(node) {
+  function findOwningPage(node) {
     let p = node;
     while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
-    if (p.type === "PAGE") figma.currentPage = p;
+    return p.type === "PAGE" ? p : null;
+  }
+  function jumpToNode(node) {
+    const page = findOwningPage(node);
+    if (page) figma.currentPage = page;
     figma.currentPage.selection = [node];
     figma.viewport.scrollAndZoomIntoView([node]);
   }
