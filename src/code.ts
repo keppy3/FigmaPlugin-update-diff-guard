@@ -204,8 +204,11 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
 // (見た目差分ありタブ, ignoring a known diff) end up calling exactly this
 // same code — the write itself doesn't know or care which tab the id came
 // from, only ui.ts's confirmation flow differs. If that row had a
-// Latest-preview wrapper placed on it, it's now redundant (Current itself
-// just became Latest), so it's cleaned up here too.
+// Latest-preview wrapper placed on it, whether to also clean it up is the
+// caller's choice (the confirm dialog's "配置中のLatestを削除する"
+// checkbox) rather than automatic — `removeLatest` defaults to true so
+// the 見た目差分なしタブ's plain apply path (which never has a wrapper
+// to begin with, and never sends this flag) behaves the same as before.
 
 function cleanupWrapper(id: string): void {
   const wrapper = wrapperStore.get(id);
@@ -215,7 +218,7 @@ function cleanupWrapper(id: string): void {
   }
 }
 
-async function handleApply(id: string, jump?: boolean): Promise<void> {
+async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): Promise<void> {
   const item = store.get(id);
   if (!item) {
     postError(`対象が見つかりません: ${id}`);
@@ -228,13 +231,13 @@ async function handleApply(id: string, jump?: boolean): Promise<void> {
   // same node id, so anything (e.g. a FigJam arrow) that references this
   // node keeps working.
   item.instance.swapComponent(item.latestComponent);
-  cleanupWrapper(id);
+  if (removeLatest !== false) cleanupWrapper(id);
   figma.commitUndo();
   post({ type: "applied", id });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-async function handleApplyBulk(ids: string[]): Promise<void> {
+async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<void> {
   const succeeded: string[] = [];
   for (let i = 0; i < ids.length; i++) {
     const item = store.get(ids[i]);
@@ -242,7 +245,7 @@ async function handleApplyBulk(ids: string[]): Promise<void> {
     post({ type: "apply-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
     try {
       item.instance.swapComponent(item.latestComponent);
-      cleanupWrapper(ids[i]);
+      if (removeLatest !== false) cleanupWrapper(ids[i]);
       succeeded.push(ids[i]);
     } catch {
       postError(`更新に失敗しました: ${item.instance.name}`);
@@ -403,6 +406,7 @@ interface IncomingMessage {
   id?: string;
   ids?: string[];
   jump?: boolean;
+  removeLatest?: boolean;
 }
 
 figma.ui.onmessage = async (msg: IncomingMessage) => {
@@ -415,10 +419,10 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         scanCancelled = true;
         break;
       case "apply":
-        if (msg.id) await handleApply(msg.id, msg.jump);
+        if (msg.id) await handleApply(msg.id, msg.jump, msg.removeLatest);
         break;
       case "apply-bulk":
-        if (msg.ids) await handleApplyBulk(msg.ids);
+        if (msg.ids) await handleApplyBulk(msg.ids, msg.removeLatest);
         break;
       case "place-latest":
         if (msg.id) await handlePlaceLatest(msg.id);

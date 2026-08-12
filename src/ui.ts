@@ -646,12 +646,27 @@ function onMarkersCleared(ids: string[] | undefined, count: number): void {
 type PendingForce = { kind: "single"; id: string; btn: HTMLButtonElement } | { kind: "bulk"; ids: string[] };
 let pendingForce: PendingForce | null = null;
 
+function targetHasPlacedLatest(target: PendingForce): boolean {
+  const has = (id: string): boolean => Object.prototype.hasOwnProperty.call(latestVisible, id);
+  return target.kind === "single" ? has(target.id) : target.ids.some(has);
+}
+
 function openForceConfirm(target: PendingForce): void {
   pendingForce = target;
   const count = target.kind === "single" ? 1 : target.ids.length;
   $("confirmBody").textContent =
     `${count}件のインスタンスは見た目に差分が確認されていますが、そのまま更新します。続行しますか？（Ctrl+Zでいつでも元に戻せます）`;
-  $("confirmNote").textContent = "（Latestを重ねて配置している場合、それを削除します）";
+
+  // Only relevant (and only shown) when at least one target row currently
+  // has a placed Latest preview — otherwise there's nothing to offer a
+  // choice about. Defaults checked to match the previous always-delete
+  // behavior for anyone who doesn't touch it.
+  const removeLatestRow = $("confirmRemoveLatestRow");
+  const removeLatestCheckbox = $("confirmRemoveLatest") as HTMLInputElement;
+  const hasPlaced = targetHasPlacedLatest(target);
+  removeLatestRow.classList.toggle("hidden", !hasPlaced);
+  removeLatestCheckbox.checked = true;
+
   $("confirmOverlay").classList.remove("hidden");
 }
 
@@ -663,15 +678,16 @@ $("modalCancel").addEventListener("click", () => {
 $("modalConfirm").addEventListener("click", () => {
   $("confirmOverlay").classList.add("hidden");
   if (!pendingForce) return;
+  const removeLatest = (($("confirmRemoveLatest") as HTMLInputElement).checked);
   if (pendingForce.kind === "single") {
     pendingForce.btn.disabled = true;
     pendingForce.btn.textContent = "更新中…";
     // Jump straight there so the user immediately sees what they just
     // confirmed updating — code.ts does this before the write itself.
-    post({ type: "apply", id: pendingForce.id, jump: true });
+    post({ type: "apply", id: pendingForce.id, jump: true, removeLatest });
   } else {
     showBulkBusy("更新しています");
-    post({ type: "apply-bulk", ids: pendingForce.ids });
+    post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
   }
   pendingForce = null;
 });

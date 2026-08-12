@@ -249,7 +249,8 @@
   .modal-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
   .modal-title svg { width: 14px; height: 14px; color: var(--danger); flex: none; }
   .modal-body { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
-  .modal-note { font-size: 10.5px; color: var(--magenta); line-height: 1.5; }
+  .modal-checkbox-row { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text); }
+  .modal-checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; flex: none; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   .modal-actions .btn-big { width: auto; height: 32px; padding: 0 16px; font-size: 11px; }
 </style>
@@ -366,7 +367,10 @@
         差分を確認せず更新します
       </div>
       <div class="modal-body" id="confirmBody"></div>
-      <div class="modal-note" id="confirmNote"></div>
+      <label class="modal-checkbox-row hidden" id="confirmRemoveLatestRow">
+        <input type="checkbox" id="confirmRemoveLatest" checked>
+        <span>配置中のLatestを削除する</span>
+      </label>
       <div class="modal-actions">
         <button class="ghost-btn" id="modalCancel">キャンセル</button>
         <button class="btn-big" id="modalConfirm">続行</button>
@@ -1079,11 +1083,19 @@
     showToast(`\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\uFF08\u30D7\u30EC\u30D3\u30E5\u30FC\uFF09\u3092${count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
   var pendingForce = null;
+  function targetHasPlacedLatest(target) {
+    const has = (id) => Object.prototype.hasOwnProperty.call(latestVisible, id);
+    return target.kind === "single" ? has(target.id) : target.ids.some(has);
+  }
   function openForceConfirm(target) {
     pendingForce = target;
     const count = target.kind === "single" ? 1 : target.ids.length;
     $("confirmBody").textContent = `${count}\u4EF6\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306F\u898B\u305F\u76EE\u306B\u5DEE\u5206\u304C\u78BA\u8A8D\u3055\u308C\u3066\u3044\u307E\u3059\u304C\u3001\u305D\u306E\u307E\u307E\u66F4\u65B0\u3057\u307E\u3059\u3002\u7D9A\u884C\u3057\u307E\u3059\u304B\uFF1F\uFF08Ctrl+Z\u3067\u3044\u3064\u3067\u3082\u5143\u306B\u623B\u305B\u307E\u3059\uFF09`;
-    $("confirmNote").textContent = "\uFF08Latest\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u3066\u3044\u308B\u5834\u5408\u3001\u305D\u308C\u3092\u524A\u9664\u3057\u307E\u3059\uFF09";
+    const removeLatestRow = $("confirmRemoveLatestRow");
+    const removeLatestCheckbox = $("confirmRemoveLatest");
+    const hasPlaced = targetHasPlacedLatest(target);
+    removeLatestRow.classList.toggle("hidden", !hasPlaced);
+    removeLatestCheckbox.checked = true;
     $("confirmOverlay").classList.remove("hidden");
   }
   $("modalCancel").addEventListener("click", () => {
@@ -1093,13 +1105,14 @@
   $("modalConfirm").addEventListener("click", () => {
     $("confirmOverlay").classList.add("hidden");
     if (!pendingForce) return;
+    const removeLatest = $("confirmRemoveLatest").checked;
     if (pendingForce.kind === "single") {
       pendingForce.btn.disabled = true;
       pendingForce.btn.textContent = "\u66F4\u65B0\u4E2D\u2026";
-      post({ type: "apply", id: pendingForce.id, jump: true });
+      post({ type: "apply", id: pendingForce.id, jump: true, removeLatest });
     } else {
       showBulkBusy("\u66F4\u65B0\u3057\u3066\u3044\u307E\u3059");
-      post({ type: "apply-bulk", ids: pendingForce.ids });
+      post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
     }
     pendingForce = null;
   });

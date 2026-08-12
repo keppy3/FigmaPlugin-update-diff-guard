@@ -132,7 +132,7 @@
       wrapperStore.delete(id);
     }
   }
-  async function handleApply(id, jump) {
+  async function handleApply(id, jump, removeLatest) {
     const item = store.get(id);
     if (!item) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
@@ -140,12 +140,12 @@
     }
     if (jump) jumpToNode(item.instance);
     item.instance.swapComponent(item.latestComponent);
-    cleanupWrapper(id);
+    if (removeLatest !== false) cleanupWrapper(id);
     figma.commitUndo();
     post({ type: "applied", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  async function handleApplyBulk(ids) {
+  async function handleApplyBulk(ids, removeLatest) {
     const succeeded = [];
     for (let i = 0; i < ids.length; i++) {
       const item = store.get(ids[i]);
@@ -153,7 +153,7 @@
       post({ type: "apply-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
       try {
         item.instance.swapComponent(item.latestComponent);
-        cleanupWrapper(ids[i]);
+        if (removeLatest !== false) cleanupWrapper(ids[i]);
         succeeded.push(ids[i]);
       } catch (e) {
         postError(`\u66F4\u65B0\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ${item.instance.name}`);
@@ -276,10 +276,10 @@
           scanCancelled = true;
           break;
         case "apply":
-          if (msg.id) await handleApply(msg.id, msg.jump);
+          if (msg.id) await handleApply(msg.id, msg.jump, msg.removeLatest);
           break;
         case "apply-bulk":
-          if (msg.ids) await handleApplyBulk(msg.ids);
+          if (msg.ids) await handleApplyBulk(msg.ids, msg.removeLatest);
           break;
         case "place-latest":
           if (msg.id) await handlePlaceLatest(msg.id);
