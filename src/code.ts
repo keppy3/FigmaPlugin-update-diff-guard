@@ -417,6 +417,22 @@ interface LibraryScanData {
   componentSets: LibraryComponentSetEntry[];
 }
 
+// 別のコンポーネント（またはコンポーネントセット）の内部に埋め込まれている
+// Component/ComponentSetかどうかを判定する。例えば「Button」コンポーネント
+// の内部でアイコン切り替え用に小さなComponentSetが使われているようなケース。
+// これは実在するノードなのでfindAllWithCriteriaは律儀に拾ってしまうが、
+// 独立して公開されるライブラリ資産ではなく、あくまで親コンポーネントの実装
+// 詳細なので、トップレベルの資産としては数えない（Analyticsの「Total
+// components」とも一致しなくなるため）。
+function hasComponentAncestor(node: BaseNode): boolean {
+  let p = node.parent;
+  while (p && p.type !== "PAGE") {
+    if (p.type === "COMPONENT" || p.type === "COMPONENT_SET") return true;
+    p = p.parent;
+  }
+  return false;
+}
+
 async function handleScanLibrary(): Promise<void> {
   const components: LibraryComponentEntry[] = [];
   const componentSets: LibraryComponentSetEntry[] = [];
@@ -430,6 +446,7 @@ async function handleScanLibrary(): Promise<void> {
     const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
     for (const node of found) {
       if (node.type === "COMPONENT_SET") {
+        if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
         const variantProps: Record<string, string[]> = {};
         for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
           variantProps[prop] = info.values;
@@ -446,6 +463,7 @@ async function handleScanLibrary(): Promise<void> {
         // セットの子（バリアント）はセット側でchildrenとして拾い済みなので、
         // 単体コンポーネントとしては数えない。
         if (node.parent?.type === "COMPONENT_SET") continue;
+        if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
         components.push({ name: node.name, key: node.key });
       }
     }

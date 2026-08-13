@@ -247,6 +247,14 @@
     post({ type: "markers-cleared", count, ids: clearedIds });
     post({ type: "marker-count", count: 0 });
   }
+  function hasComponentAncestor(node) {
+    let p = node.parent;
+    while (p && p.type !== "PAGE") {
+      if (p.type === "COMPONENT" || p.type === "COMPONENT_SET") return true;
+      p = p.parent;
+    }
+    return false;
+  }
   async function handleScanLibrary() {
     var _a;
     const components = [];
@@ -259,6 +267,7 @@
       const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
       for (const node of found) {
         if (node.type === "COMPONENT_SET") {
+          if (hasComponentAncestor(node)) continue;
           const variantProps = {};
           for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
             variantProps[prop] = info.values;
@@ -274,6 +283,7 @@
           });
         } else if (node.type === "COMPONENT") {
           if (((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") continue;
+          if (hasComponentAncestor(node)) continue;
           components.push({ name: node.name, key: node.key });
         }
       }
