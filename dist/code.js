@@ -2,6 +2,13 @@
 (() => {
   // src/code.ts
   figma.showUI(__html__, { width: 420, height: 660 });
+  var SWAP_MAPPING_CACHE_KEY = "swap-mapping-cache";
+  (async () => {
+    const cached = await figma.clientStorage.getAsync(SWAP_MAPPING_CACHE_KEY);
+    if (typeof cached === "string" && cached) {
+      post({ type: "swap-mapping-cache-loaded", raw: cached });
+    }
+  })();
   var store = /* @__PURE__ */ new Map();
   var wrapperStore = /* @__PURE__ */ new Map();
   var scanCancelled = false;
@@ -339,7 +346,7 @@
     if (isSet) {
       const set = nameToSet.get(matchName);
       if (!set) {
-        return { reason: `\u300C${matchName}\u300D\u3068\u3044\u3046\u540D\u524D\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30BB\u30C3\u30C8\u304C\u65B0\u30E9\u30A4\u30D6\u30E9\u30EA\u306B\u898B\u3064\u304B\u308A\u307E\u305B\u3093`, category: "name" };
+        return { reason: "\u540D\u524D\u304C\u4E00\u81F4\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093", category: "name" };
       }
       const current = currentVariantProperties != null ? currentVariantProperties : {};
       const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
@@ -354,7 +361,7 @@
     }
     const comp = nameToComponent.get(matchName);
     if (!comp) {
-      return { reason: `\u300C${matchName}\u300D\u3068\u3044\u3046\u540D\u524D\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u304C\u65B0\u30E9\u30A4\u30D6\u30E9\u30EA\u306B\u898B\u3064\u304B\u308A\u307E\u305B\u3093`, category: "name" };
+      return { reason: "\u540D\u524D\u304C\u4E00\u81F4\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093", category: "name" };
     }
     return { key: comp.key };
   }
@@ -477,6 +484,9 @@
           break;
         case "cancel-swap-scan":
           swapScanCancelled = true;
+          break;
+        case "save-swap-mapping-cache":
+          if (typeof msg.raw === "string") await figma.clientStorage.setAsync(SWAP_MAPPING_CACHE_KEY, msg.raw);
           break;
       }
     } catch (err) {

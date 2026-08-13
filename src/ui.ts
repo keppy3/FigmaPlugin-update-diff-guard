@@ -78,8 +78,7 @@ interface SwapStrayGroup {
   name: string;
   reason: string;
   category: "name" | "variant" | "other";
-  count: number;
-  firstId: string; // ジャンプボタンの飛び先（グループ内最初の1件）
+  ids: string[]; // グループ内の全インスタンスID。展開すると1件ずつジャンプできる
   thumbnailUrl?: string;
 }
 const swapRows = new Map<string, RowData>();
@@ -175,23 +174,57 @@ function updateModeTabsDisabledState(): void {
   });
 }
 
+// そのモードがまだ「何も失うものがない」初期画面（更新のスキャン前画面／
+// スワップの貼り付け画面／ライブラリスキャンの説明画面）を表示中かどうか。
+// 真なら再クリックしても確認なしで即リセットする（実質何も起きない）。
+function isAtModeStart(mode: Mode): boolean {
+  if (mode === "update") return !views.setup.classList.contains("hidden");
+  if (mode === "swap-apply") return !swapViews.paste.classList.contains("hidden");
+  if (mode === "swap-scan") return !scanLibViews.intro.classList.contains("hidden");
+  return true;
+}
+
+function performModeReset(mode: Mode): void {
+  if (mode === "update") {
+    if (scanning) {
+      post({ type: "cancel-scan" }); // onScanFinished(true) will land us on setup
+      return;
+    }
+    resetToSetup();
+  } else if (mode === "swap-apply") {
+    if (swapScanning) {
+      post({ type: "cancel-swap-scan" });
+      return;
+    }
+    resetSwapToPaste();
+  } else if (mode === "swap-scan") {
+    showScanLib("intro");
+  }
+}
+
+let pendingResetMode: Mode | null = null;
+
+function openResetConfirm(mode: Mode): void {
+  pendingResetMode = mode;
+  $("resetConfirmOverlay").classList.remove("hidden");
+}
+
+$("resetConfirmCancel").addEventListener("click", () => {
+  $("resetConfirmOverlay").classList.add("hidden");
+  pendingResetMode = null;
+});
+
+$("resetConfirmOk").addEventListener("click", () => {
+  $("resetConfirmOverlay").classList.add("hidden");
+  if (pendingResetMode) performModeReset(pendingResetMode);
+  pendingResetMode = null;
+});
+
 function selectMode(mode: Mode): void {
   if (mode === currentMode) {
-    if (mode === "update") {
-      if (scanning) {
-        post({ type: "cancel-scan" }); // onScanFinished(true) will land us on setup
-      } else if (views.busy.classList.contains("hidden")) {
-        resetToSetup();
-      }
-    } else if (mode === "swap-scan") {
-      showScanLib("intro");
-    } else if (mode === "swap-apply") {
-      if (swapScanning) {
-        post({ type: "cancel-swap-scan" });
-      } else if (swapViews.busy.classList.contains("hidden")) {
-        resetSwapToPaste();
-      }
-    }
+    // 既に初期画面ならリセットしても何も変わらないので確認不要。それ以外
+    // （スキャン中・結果表示中）は誤操作で今のセッションを失わないよう確認を挟む。
+    if (!isAtModeStart(mode)) openResetConfirm(mode);
     return;
   }
   currentMode = mode;
@@ -594,24 +627,24 @@ bindListToolbar("diff");
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-  $("updateBtnLabel").textContent = `一括更新（${cleanChecked}件）`;
+  $("updateBtnLabel").textContent = `一括更新(${cleanChecked})`;
   ($("updateBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
 
   const placeableChecked = diffIds.filter(
     (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
   ).length;
-  $("placeLatestBtnLabel").textContent = `比較用インスタンスを一括配置（${placeableChecked}件）`;
+  $("placeLatestBtnLabel").textContent = `比較用インスタンスを一括配置(${placeableChecked})`;
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
   // Unlike the other footer buttons, this isn't scoped to checked rows —
   // it's a full sweep of every tagged node on every page (same as the
   // former standalone "すべて削除", which this button absorbed), so its
   // count and enabled state come from markerCount, not the row list.
-  $("clearAllLatestBtnLabel").textContent = `比較用インスタンスをすべて削除（${markerCount}件）`;
+  $("clearAllLatestBtnLabel").textContent = `比較用インスタンスをすべて削除(${markerCount})`;
   ($("clearAllLatestBtn") as HTMLButtonElement).disabled = markerCount === 0;
 
   const forceChecked = diffIds.filter((id) => checked[id]).length;
-  $("forceUpdateBtnLabel").textContent = `このまま一括更新（${forceChecked}件）`;
+  $("forceUpdateBtnLabel").textContent = `このまま一括更新(${forceChecked})`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
@@ -924,9 +957,20 @@ function validateSwapPaste(): void {
   statusEl.className = "paste-status";
   scanBtn.disabled = false;
   parsedSwapMapping = parsed;
+  // プラグイン再起動をまたいで思い出せるよう、有効な内容が入るたびに保存しておく。
+  post({ type: "save-swap-mapping-cache", raw });
 }
 
 $("swapPasteTextarea").addEventListener("input", validateSwapPaste);
+
+// 前回有効だった対応表をキャッシュから復元する。テキストエリアが空の（まだ何も
+// 貼っていない）ときだけ埋める — 起動直後に貼り付け始めていた場合に上書きしない。
+function onSwapMappingCacheLoaded(raw: string): void {
+  const textarea = $("swapPasteTextarea") as HTMLTextAreaElement;
+  if (textarea.value.trim()) return;
+  textarea.value = raw;
+  validateSwapPaste();
+}
 
 $("swapScanBtn").addEventListener("click", () => {
   if (!parsedSwapMapping) return;
@@ -993,14 +1037,13 @@ function onSwapScanExcluded(msg: SwapStrayItemMsg): void {
   const key = `${msg.name} ${msg.reason}`;
   const existing = swapStrayGroups.get(key);
   if (existing) {
-    existing.count++;
+    existing.ids.push(msg.id);
   } else {
     swapStrayGroups.set(key, {
       name: msg.name,
       reason: msg.reason,
       category: msg.category,
-      count: 1,
-      firstId: msg.id,
+      ids: [msg.id],
       thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : undefined,
     });
   }
@@ -1105,38 +1148,65 @@ function swapDiffRowHtml(id: string, justEntered: boolean): string {
    同名・同理由のインスタンスは1行にまとめ、件数とグループ代表1件分の
    サムネイル（あれば）だけを表示する。オーバーライドで個体差があっても
    全件分のサムネイルは持たない（§code.ts参照）。 */
-function swapStrayRowHtml(group: SwapStrayGroup): string {
-  const thumb = group.thumbnailUrl
-    ? `<img src="${group.thumbnailUrl}" alt="">`
-    : "";
-  return `<div class="stray-row">
-    <div class="stray-thumb">${thumb}</div>
-    <div style="flex:1; min-width:0;">
-      <div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.count > 1 ? ` <span class="stray-count">×${group.count}件</span>` : ""}</div>
-      <div class="stray-reason">${escapeHtml(group.reason)}</div>
-    </div>
-    <button class="ghost-btn" data-jump="${group.firstId}">${JUMP_ICON}ジャンプ</button>
-  </div>`;
+// 1件しかないグループはジャンプボタン付きの単純な行のまま。複数件ある
+// グループだけ展開可能にし、開くと全インスタンスに個別ジャンプできる
+// （サムネイルは代表1枚のみ。個々のインスタンスの見た目までは出さない）。
+function swapStrayRowHtml(key: string, group: SwapStrayGroup): string {
+  const thumb = group.thumbnailUrl ? `<img src="${group.thumbnailUrl}" alt="">` : "";
+  const nameHtml = `<div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${
+    group.ids.length > 1 ? ` <span class="stray-count">×${group.ids.length}</span>` : ""
+  }</div>`;
+
+  if (group.ids.length <= 1) {
+    return `<div class="stray-row">
+      <div class="stray-thumb">${thumb}</div>
+      <div style="flex:1; min-width:0;">
+        ${nameHtml}
+        <div class="stray-reason">${escapeHtml(group.reason)}</div>
+      </div>
+      <button class="ghost-btn" data-jump="${group.ids[0]}">${JUMP_ICON}ジャンプ</button>
+    </div>`;
+  }
+
+  const instanceRows = group.ids
+    .map(
+      (id, i) =>
+        `<div class="stray-instance-row"><span class="stray-instance-index">${i + 1}</span><button class="ghost-btn" data-jump="${id}">${JUMP_ICON}ジャンプ</button></div>`
+    )
+    .join("");
+
+  return `<details class="row" data-id="stray:${escapeHtml(key)}" ${swapExpandedIds[`stray:${key}`] ? "open" : ""}>
+    <summary class="stray-row">
+      <div class="stray-thumb">${thumb}</div>
+      <div style="flex:1; min-width:0;">
+        ${nameHtml}
+        <div class="stray-reason">${escapeHtml(group.reason)}</div>
+      </div>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="stray-instance-list">${instanceRows}</div>
+  </details>`;
 }
 
 function renderSwapStray(): void {
-  const groups = Array.from(swapStrayGroups.values());
-  const byName = groups.filter((g) => g.category === "name");
-  const byVariant = groups.filter((g) => g.category === "variant");
-  const byOther = groups.filter((g) => g.category === "other");
-  const sumCount = (gs: SwapStrayGroup[]): number => gs.reduce((sum, g) => sum + g.count, 0);
+  const entries = Array.from(swapStrayGroups.entries());
+  const byName = entries.filter(([, g]) => g.category === "name");
+  const byVariant = entries.filter(([, g]) => g.category === "variant");
+  const byOther = entries.filter(([, g]) => g.category === "other");
+  const sumCount = (gs: [string, SwapStrayGroup][]): number => gs.reduce((sum, [, g]) => sum + g.ids.length, 0);
+  const rows = (gs: [string, SwapStrayGroup][]): string => gs.map(([key, g]) => swapStrayRowHtml(key, g)).join("");
   let html = "";
   if (byName.length) {
     html += `<div class="stray-group-head">名前が一致しません (${sumCount(byName)})</div>`;
-    html += byName.map(swapStrayRowHtml).join("");
+    html += rows(byName);
   }
   if (byVariant.length) {
     html += `<div class="stray-group-head">バリアントの組み合わせが一致しません (${sumCount(byVariant)})</div>`;
-    html += byVariant.map(swapStrayRowHtml).join("");
+    html += rows(byVariant);
   }
   if (byOther.length) {
     html += `<div class="stray-group-head">その他 (${sumCount(byOther)})</div>`;
-    html += byOther.map(swapStrayRowHtml).join("");
+    html += rows(byOther);
   }
   $("swapStrayList").innerHTML = html || '<div class="empty-state">迷子の項目はありません</div>';
 }
@@ -1149,7 +1219,7 @@ function swapEmptyState(kind: "clean" | "diff"): string {
 function renderSwapTabs(justEnteredId?: string): void {
   $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
   $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
-  $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.count, 0)})`;
+  $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.ids.length, 0)})`;
 
   $("swapCleanList").innerHTML = swapCleanIds.length
     ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
@@ -1267,22 +1337,22 @@ bindSwapListToolbar("diff");
 
 function updateSwapFooterButtons(): void {
   const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
-  $("swapBulkBtnLabel").textContent = `一括スワップ（${cleanChecked}件）`;
+  $("swapBulkBtnLabel").textContent = `一括スワップ(${cleanChecked})`;
   ($("swapBulkBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
 
   const placeableChecked = swapDiffIds.filter(
     (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
   ).length;
-  $("swapPlaceBulkBtnLabel").textContent = `比較用インスタンスを一括配置（${placeableChecked}件）`;
+  $("swapPlaceBulkBtnLabel").textContent = `比較用インスタンスを一括配置(${placeableChecked})`;
   ($("swapPlaceBulkBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
   // 更新フロー側と同じ全件スイープのmarkerCountを共有して使う（比較用インスタンスの
   // 削除は出所を問わない全件掃除のため。§code.ts参照）。
-  $("swapClearAllBtnLabel").textContent = `比較用インスタンスをすべて削除（${markerCount}件）`;
+  $("swapClearAllBtnLabel").textContent = `比較用インスタンスをすべて削除(${markerCount})`;
   ($("swapClearAllBtn") as HTMLButtonElement).disabled = markerCount === 0;
 
   const forceChecked = swapDiffIds.filter((id) => swapChecked[id]).length;
-  $("swapForceBulkBtnLabel").textContent = `このまま一括スワップ（${forceChecked}件）`;
+  $("swapForceBulkBtnLabel").textContent = `このまま一括スワップ(${forceChecked})`;
   ($("swapForceBulkBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
@@ -1472,6 +1542,9 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "swap-latest-removed":
       onSwapLatestRemoved(msg.id);
+      break;
+    case "swap-mapping-cache-loaded":
+      onSwapMappingCacheLoaded(msg.raw);
       break;
     case "error":
       showToast(`エラー: ${msg.message}`);

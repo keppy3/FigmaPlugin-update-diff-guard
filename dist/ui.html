@@ -303,6 +303,9 @@
     overflow: hidden; flex: none;
   }
   .stray-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .stray-instance-list { display: flex; flex-direction: column; padding: 0 14px 8px 66px; }
+  .stray-instance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; }
+  .stray-instance-index { font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
   .annotation-note {
     display: flex; align-items: flex-start; gap: 7px; padding: 10px 14px; font-size: 10px; color: var(--text-muted);
     background: var(--chrome-bg); border-top: 1px solid var(--panel-border); line-height: 1.6;
@@ -380,7 +383,7 @@
           <div class="row-list" id="cleanList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
+              <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新(0)</span></button>
             </div>
           </div>
         </div>
@@ -397,10 +400,10 @@
           <div class="row-list" id="diffList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新（0件）</span></button>
+              <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新(0)</span></button>
               <div class="btn-pair">
-                <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
-                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+                <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置(0)</span></button>
+                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
               </div>
             </div>
           </div>
@@ -475,7 +478,7 @@
           <div class="row-list" id="swapCleanList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="swapBulkBtn"><span id="swapBulkBtnLabel">一括スワップ（0件）</span></button>
+              <button class="btn-big" id="swapBulkBtn"><span id="swapBulkBtnLabel">一括スワップ(0)</span></button>
             </div>
           </div>
         </div>
@@ -492,10 +495,10 @@
           <div class="row-list" id="swapDiffList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="swapForceBulkBtn"><span id="swapForceBulkBtnLabel">このまま一括スワップ（0件）</span></button>
+              <button class="btn-big" id="swapForceBulkBtn"><span id="swapForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
               <div class="btn-pair">
-                <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
-                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+                <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
+                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
               </div>
             </div>
           </div>
@@ -544,6 +547,17 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="modal-overlay hidden" id="resetConfirmOverlay">
+    <div class="modal-box">
+      <div class="modal-title">セッションをリセットしますか？</div>
+      <div class="modal-body">現在の結果は失われます。よろしいですか？</div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="resetConfirmCancel">キャンセル</button>
+        <button class="btn-big outline-danger" id="resetConfirmOk">リセット</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
     <div class="modal-box">
@@ -862,23 +876,46 @@
       }
     });
   }
+  function isAtModeStart(mode) {
+    if (mode === "update") return !views.setup.classList.contains("hidden");
+    if (mode === "swap-apply") return !swapViews.paste.classList.contains("hidden");
+    if (mode === "swap-scan") return !scanLibViews.intro.classList.contains("hidden");
+    return true;
+  }
+  function performModeReset(mode) {
+    if (mode === "update") {
+      if (scanning) {
+        post({ type: "cancel-scan" });
+        return;
+      }
+      resetToSetup();
+    } else if (mode === "swap-apply") {
+      if (swapScanning) {
+        post({ type: "cancel-swap-scan" });
+        return;
+      }
+      resetSwapToPaste();
+    } else if (mode === "swap-scan") {
+      showScanLib("intro");
+    }
+  }
+  var pendingResetMode = null;
+  function openResetConfirm(mode) {
+    pendingResetMode = mode;
+    $("resetConfirmOverlay").classList.remove("hidden");
+  }
+  $("resetConfirmCancel").addEventListener("click", () => {
+    $("resetConfirmOverlay").classList.add("hidden");
+    pendingResetMode = null;
+  });
+  $("resetConfirmOk").addEventListener("click", () => {
+    $("resetConfirmOverlay").classList.add("hidden");
+    if (pendingResetMode) performModeReset(pendingResetMode);
+    pendingResetMode = null;
+  });
   function selectMode(mode) {
     if (mode === currentMode) {
-      if (mode === "update") {
-        if (scanning) {
-          post({ type: "cancel-scan" });
-        } else if (views.busy.classList.contains("hidden")) {
-          resetToSetup();
-        }
-      } else if (mode === "swap-scan") {
-        showScanLib("intro");
-      } else if (mode === "swap-apply") {
-        if (swapScanning) {
-          post({ type: "cancel-swap-scan" });
-        } else if (swapViews.busy.classList.contains("hidden")) {
-          resetSwapToPaste();
-        }
-      }
+      if (!isAtModeStart(mode)) openResetConfirm(mode);
       return;
     }
     currentMode = mode;
@@ -1209,17 +1246,17 @@
   bindListToolbar("diff");
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-    $("updateBtnLabel").textContent = `\u4E00\u62EC\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
+    $("updateBtnLabel").textContent = `\u4E00\u62EC\u66F4\u65B0(${cleanChecked})`;
     $("updateBtn").disabled = cleanChecked === 0;
     const placeableChecked = diffIds.filter(
       (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
     ).length;
-    $("placeLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
+    $("placeLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${placeableChecked})`;
     $("placeLatestBtn").disabled = placeableChecked === 0;
-    $("clearAllLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664\uFF08${markerCount}\u4EF6\uFF09`;
+    $("clearAllLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664(${markerCount})`;
     $("clearAllLatestBtn").disabled = markerCount === 0;
     const forceChecked = diffIds.filter((id) => checked[id]).length;
-    $("forceUpdateBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
+    $("forceUpdateBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u66F4\u65B0(${forceChecked})`;
     $("forceUpdateBtn").disabled = forceChecked === 0;
   }
   function showBulkBusy(label) {
@@ -1449,8 +1486,15 @@
     statusEl.className = "paste-status";
     scanBtn.disabled = false;
     parsedSwapMapping = parsed;
+    post({ type: "save-swap-mapping-cache", raw });
   }
   $("swapPasteTextarea").addEventListener("input", validateSwapPaste);
+  function onSwapMappingCacheLoaded(raw) {
+    const textarea = $("swapPasteTextarea");
+    if (textarea.value.trim()) return;
+    textarea.value = raw;
+    validateSwapPaste();
+  }
   $("swapScanBtn").addEventListener("click", () => {
     if (!parsedSwapMapping) return;
     const checkedRadio = document.querySelector('input[name="swapscope"]:checked');
@@ -1503,14 +1547,13 @@
     const key = `${msg.name} ${msg.reason}`;
     const existing = swapStrayGroups.get(key);
     if (existing) {
-      existing.count++;
+      existing.ids.push(msg.id);
     } else {
       swapStrayGroups.set(key, {
         name: msg.name,
         reason: msg.reason,
         category: msg.category,
-        count: 1,
-        firstId: msg.id,
+        ids: [msg.id],
         thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : void 0
       });
     }
@@ -1601,35 +1644,53 @@
     </div>
   </details>`;
   }
-  function swapStrayRowHtml(group) {
+  function swapStrayRowHtml(key, group) {
     const thumb = group.thumbnailUrl ? `<img src="${group.thumbnailUrl}" alt="">` : "";
-    return `<div class="stray-row">
-    <div class="stray-thumb">${thumb}</div>
-    <div style="flex:1; min-width:0;">
-      <div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.count > 1 ? ` <span class="stray-count">\xD7${group.count}\u4EF6</span>` : ""}</div>
-      <div class="stray-reason">${escapeHtml(group.reason)}</div>
-    </div>
-    <button class="ghost-btn" data-jump="${group.firstId}">${JUMP_ICON}\u30B8\u30E3\u30F3\u30D7</button>
-  </div>`;
+    const nameHtml = `<div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.ids.length > 1 ? ` <span class="stray-count">\xD7${group.ids.length}</span>` : ""}</div>`;
+    if (group.ids.length <= 1) {
+      return `<div class="stray-row">
+      <div class="stray-thumb">${thumb}</div>
+      <div style="flex:1; min-width:0;">
+        ${nameHtml}
+        <div class="stray-reason">${escapeHtml(group.reason)}</div>
+      </div>
+      <button class="ghost-btn" data-jump="${group.ids[0]}">${JUMP_ICON}\u30B8\u30E3\u30F3\u30D7</button>
+    </div>`;
+    }
+    const instanceRows = group.ids.map(
+      (id, i) => `<div class="stray-instance-row"><span class="stray-instance-index">${i + 1}</span><button class="ghost-btn" data-jump="${id}">${JUMP_ICON}\u30B8\u30E3\u30F3\u30D7</button></div>`
+    ).join("");
+    return `<details class="row" data-id="stray:${escapeHtml(key)}" ${swapExpandedIds[`stray:${key}`] ? "open" : ""}>
+    <summary class="stray-row">
+      <div class="stray-thumb">${thumb}</div>
+      <div style="flex:1; min-width:0;">
+        ${nameHtml}
+        <div class="stray-reason">${escapeHtml(group.reason)}</div>
+      </div>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="stray-instance-list">${instanceRows}</div>
+  </details>`;
   }
   function renderSwapStray() {
-    const groups = Array.from(swapStrayGroups.values());
-    const byName = groups.filter((g) => g.category === "name");
-    const byVariant = groups.filter((g) => g.category === "variant");
-    const byOther = groups.filter((g) => g.category === "other");
-    const sumCount = (gs) => gs.reduce((sum, g) => sum + g.count, 0);
+    const entries = Array.from(swapStrayGroups.entries());
+    const byName = entries.filter(([, g]) => g.category === "name");
+    const byVariant = entries.filter(([, g]) => g.category === "variant");
+    const byOther = entries.filter(([, g]) => g.category === "other");
+    const sumCount = (gs) => gs.reduce((sum, [, g]) => sum + g.ids.length, 0);
+    const rows2 = (gs) => gs.map(([key, g]) => swapStrayRowHtml(key, g)).join("");
     let html = "";
     if (byName.length) {
       html += `<div class="stray-group-head">\u540D\u524D\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093 (${sumCount(byName)})</div>`;
-      html += byName.map(swapStrayRowHtml).join("");
+      html += rows2(byName);
     }
     if (byVariant.length) {
       html += `<div class="stray-group-head">\u30D0\u30EA\u30A2\u30F3\u30C8\u306E\u7D44\u307F\u5408\u308F\u305B\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093 (${sumCount(byVariant)})</div>`;
-      html += byVariant.map(swapStrayRowHtml).join("");
+      html += rows2(byVariant);
     }
     if (byOther.length) {
       html += `<div class="stray-group-head">\u305D\u306E\u4ED6 (${sumCount(byOther)})</div>`;
-      html += byOther.map(swapStrayRowHtml).join("");
+      html += rows2(byOther);
     }
     $("swapStrayList").innerHTML = html || '<div class="empty-state">\u8FF7\u5B50\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
   }
@@ -1640,7 +1701,7 @@
   function renderSwapTabs(justEnteredId) {
     $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
     $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
-    $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.count, 0)})`;
+    $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.ids.length, 0)})`;
     $("swapCleanList").innerHTML = swapCleanIds.length ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
     $("swapDiffList").innerHTML = swapDiffIds.length ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
     renderSwapStray();
@@ -1743,17 +1804,17 @@
   bindSwapListToolbar("diff");
   function updateSwapFooterButtons() {
     const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
-    $("swapBulkBtnLabel").textContent = `\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7\uFF08${cleanChecked}\u4EF6\uFF09`;
+    $("swapBulkBtnLabel").textContent = `\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${cleanChecked})`;
     $("swapBulkBtn").disabled = cleanChecked === 0;
     const placeableChecked = swapDiffIds.filter(
       (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
     ).length;
-    $("swapPlaceBulkBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
+    $("swapPlaceBulkBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${placeableChecked})`;
     $("swapPlaceBulkBtn").disabled = placeableChecked === 0;
-    $("swapClearAllBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664\uFF08${markerCount}\u4EF6\uFF09`;
+    $("swapClearAllBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664(${markerCount})`;
     $("swapClearAllBtn").disabled = markerCount === 0;
     const forceChecked = swapDiffIds.filter((id) => swapChecked[id]).length;
-    $("swapForceBulkBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7\uFF08${forceChecked}\u4EF6\uFF09`;
+    $("swapForceBulkBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${forceChecked})`;
     $("swapForceBulkBtn").disabled = forceChecked === 0;
   }
   function showSwapBulkBusy(label) {
@@ -1930,6 +1991,9 @@
         break;
       case "swap-latest-removed":
         onSwapLatestRemoved(msg.id);
+        break;
+      case "swap-mapping-cache-loaded":
+        onSwapMappingCacheLoaded(msg.raw);
         break;
       case "error":
         showToast(`\u30A8\u30E9\u30FC: ${msg.message}`);

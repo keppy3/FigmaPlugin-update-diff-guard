@@ -17,6 +17,19 @@
 
 figma.showUI(__html__, { width: 420, height: 660 });
 
+// ---- スワップ先コンポーネントリストの記憶（プラグイン再起動をまたいで保持） ----
+// clientStorageはユーザー×プラグイン単位で永続化される（ファイルではなく
+// このマシン・このFigmaアカウントに紐づく）。貼り付けたJSONをそのまま
+// 文字列で保存しておき、次回起動時に空欄なら自動で埋める。
+const SWAP_MAPPING_CACHE_KEY = "swap-mapping-cache";
+
+(async () => {
+  const cached = await figma.clientStorage.getAsync(SWAP_MAPPING_CACHE_KEY);
+  if (typeof cached === "string" && cached) {
+    post({ type: "swap-mapping-cache-loaded", raw: cached });
+  }
+})();
+
 type ScopeMode = "selection" | "page" | "all";
 
 // "update"=コンポーネント更新（同一キーの最新publish版）、"swap"=ライブラリ
@@ -557,7 +570,7 @@ function resolveSwapTarget(
   if (isSet) {
     const set = nameToSet.get(matchName);
     if (!set) {
-      return { reason: `「${matchName}」という名前のコンポーネントセットが新ライブラリに見つかりません`, category: "name" };
+      return { reason: "名前が一致するコンポーネントが見つかりません", category: "name" };
     }
     const current = currentVariantProperties ?? {};
     const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
@@ -574,7 +587,7 @@ function resolveSwapTarget(
   }
   const comp = nameToComponent.get(matchName);
   if (!comp) {
-    return { reason: `「${matchName}」という名前のコンポーネントが新ライブラリに見つかりません`, category: "name" };
+    return { reason: "名前が一致するコンポーネントが見つかりません", category: "name" };
   }
   return { key: comp.key };
 }
@@ -699,6 +712,7 @@ interface IncomingMessage {
   jump?: boolean;
   removeLatest?: boolean;
   mapping?: LibraryScanData;
+  raw?: string;
 }
 
 figma.ui.onmessage = async (msg: IncomingMessage) => {
@@ -742,6 +756,9 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "cancel-swap-scan":
         swapScanCancelled = true;
+        break;
+      case "save-swap-mapping-cache":
+        if (typeof msg.raw === "string") await figma.clientStorage.setAsync(SWAP_MAPPING_CACHE_KEY, msg.raw);
         break;
     }
   } catch (err) {

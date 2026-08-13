@@ -303,6 +303,9 @@
     overflow: hidden; flex: none;
   }
   .stray-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .stray-instance-list { display: flex; flex-direction: column; padding: 0 14px 8px 66px; }
+  .stray-instance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; }
+  .stray-instance-index { font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
   .annotation-note {
     display: flex; align-items: flex-start; gap: 7px; padding: 10px 14px; font-size: 10px; color: var(--text-muted);
     background: var(--chrome-bg); border-top: 1px solid var(--panel-border); line-height: 1.6;
@@ -380,7 +383,7 @@
           <div class="row-list" id="cleanList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
+              <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新(0)</span></button>
             </div>
           </div>
         </div>
@@ -397,10 +400,10 @@
           <div class="row-list" id="diffList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新（0件）</span></button>
+              <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新(0)</span></button>
               <div class="btn-pair">
-                <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
-                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+                <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置(0)</span></button>
+                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
               </div>
             </div>
           </div>
@@ -475,7 +478,7 @@
           <div class="row-list" id="swapCleanList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="swapBulkBtn"><span id="swapBulkBtnLabel">一括スワップ（0件）</span></button>
+              <button class="btn-big" id="swapBulkBtn"><span id="swapBulkBtnLabel">一括スワップ(0)</span></button>
             </div>
           </div>
         </div>
@@ -492,10 +495,10 @@
           <div class="row-list" id="swapDiffList"></div>
           <div class="tab-footer">
             <div class="tab-footer-actions">
-              <button class="btn-big" id="swapForceBulkBtn"><span id="swapForceBulkBtnLabel">このまま一括スワップ（0件）</span></button>
+              <button class="btn-big" id="swapForceBulkBtn"><span id="swapForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
               <div class="btn-pair">
-                <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
-                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+                <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
+                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
               </div>
             </div>
           </div>
@@ -544,6 +547,17 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="modal-overlay hidden" id="resetConfirmOverlay">
+    <div class="modal-box">
+      <div class="modal-title">セッションをリセットしますか？</div>
+      <div class="modal-body">現在の結果は失われます。よろしいですか？</div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="resetConfirmCancel">キャンセル</button>
+        <button class="btn-big outline-danger" id="resetConfirmOk">リセット</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
     <div class="modal-box">
