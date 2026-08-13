@@ -240,8 +240,7 @@
     border-radius: 10px; padding: 16px; box-shadow: 0 20px 48px rgba(0,0,0,0.25);
     display: flex; flex-direction: column; gap: 10px;
   }
-  .modal-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
-  .modal-title svg { width: 14px; height: 14px; color: var(--danger); flex: none; }
+  .modal-title { font-size: 12.5px; font-weight: 700; }
   .modal-body { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
   .modal-checkbox-row { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text); }
   .modal-checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; flex: none; }
@@ -351,10 +350,7 @@
 
   <div class="modal-overlay hidden" id="confirmOverlay">
     <div class="modal-box">
-      <div class="modal-title">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5L1 14h14L8 1.5z"/><path d="M8 6.5v3.2M8 12v.01"/></svg>
-        差分を確認せず更新します
-      </div>
+      <div class="modal-title">差分を許容して更新</div>
       <div class="modal-body" id="confirmBody"></div>
       <label class="modal-checkbox-row hidden" id="confirmRemoveLatestRow">
         <input type="checkbox" id="confirmRemoveLatest" checked>

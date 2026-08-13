@@ -647,9 +647,7 @@ function targetHasPlacedLatest(target: PendingForce): boolean {
 
 function openForceConfirm(target: PendingForce): void {
   pendingForce = target;
-  const count = target.kind === "single" ? 1 : target.ids.length;
-  $("confirmBody").textContent =
-    `${count}件のインスタンスは見た目に差分が確認されていますが、そのまま更新します。続行しますか？（Ctrl+Zでいつでも元に戻せます）`;
+  $("confirmBody").textContent = "更新すると現在の見た目から差異が生じます。よろしいですか？";
 
   // Only relevant (and only shown) when at least one target row currently
   // has a placed Latest preview — otherwise there's nothing to offer a
