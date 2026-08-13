@@ -82,15 +82,21 @@
 
   /* ---- 最上部モードタブ（更新／ライブラリスワップ／ライブラリスキャン） ----
      再クリックでそのモードの中身をリセットする（旧resetBtnの役割を兼ねる）ため、
-     専用のヘッダーバーは持たない。.tabs 配下の .tab とはクラスを分け、結果画面の
-     ✅️/⚠️/🧭タブ切り替えロジックと衝突しないようにしている。 */
+     専用のヘッダーバーは持たない。結果画面の✅️/⚠️/🧭タブ（アンダーライン式）とは
+     見た目の階層を分けるため、こちらはセグメントコントロール（角丸トラック＋
+     アクティブ項目だけ塗りつぶし）にしている。クラスも .tab とは別にして
+     タブ切り替えロジックの衝突を避ける。 */
+  .mode-tabs {
+    display: flex; gap: 3px; padding: 3px; margin: 8px 10px 2px;
+    background: var(--row-hover); border-radius: 9px; flex: none;
+  }
   .mode-tabs .mode-tab {
-    flex: 1; padding: 11px 4px; font-size: 11px; font-weight: 700; text-align: center;
-    background: none; border: none; cursor: pointer; color: var(--text-muted);
-    border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+    flex: 1; padding: 6px 4px; font-size: 10.5px; font-weight: 700; text-align: center;
+    background: none; border: none; border-radius: 6px; cursor: pointer; color: var(--text-muted);
+    white-space: nowrap; transition: background 0.12s ease, color 0.12s ease;
   }
   .mode-tabs .mode-tab:hover { color: var(--text); }
-  .mode-tabs .mode-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .mode-tabs .mode-tab.active { color: var(--text); background: var(--panel-bg); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .mode-tabs .mode-tab[disabled] { opacity: 0.4; cursor: default; }
   .mode-tabs .mode-tab[disabled]:hover { color: var(--text-muted); }
 
@@ -250,7 +256,7 @@
 </style>
 </head>
 <body>
-  <div class="tabs mode-tabs">
+  <div class="mode-tabs">
     <button class="mode-tab active" data-mode="update">コンポーネント更新</button>
     <button class="mode-tab" data-mode="swap-apply">ライブラリスワップ</button>
     <button class="mode-tab" data-mode="swap-scan">ライブラリスキャン</button>
