@@ -80,17 +80,22 @@
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
 
-  .chrome { background: var(--chrome-bg); border-bottom: 1px solid var(--panel-border); padding: 8px 10px 8px 14px; display: flex; align-items: center; gap: 8px; flex: none; }
-  .chrome-sub { font-size: 12px; color: var(--text); font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chrome-reset-btn {
-    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-    border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; flex: none;
+  /* ---- 最上部モードタブ（更新／ライブラリスワップ／ライブラリスキャン） ----
+     再クリックでそのモードの中身をリセットする（旧resetBtnの役割を兼ねる）ため、
+     専用のヘッダーバーは持たない。.tabs 配下の .tab とはクラスを分け、結果画面の
+     ✅️/⚠️/🧭タブ切り替えロジックと衝突しないようにしている。 */
+  .mode-tabs .mode-tab {
+    flex: 1; padding: 11px 4px; font-size: 11px; font-weight: 700; text-align: center;
+    background: none; border: none; cursor: pointer; color: var(--text-muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
   }
-  .chrome-reset-btn:hover { background: var(--row-hover); color: var(--text); }
-  .chrome-reset-btn[disabled] { opacity: 0.35; cursor: default; }
-  .chrome-reset-btn svg { width: 14px; height: 14px; }
+  .mode-tabs .mode-tab:hover { color: var(--text); }
+  .mode-tabs .mode-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .mode-tabs .mode-tab[disabled] { opacity: 0.4; cursor: default; }
+  .mode-tabs .mode-tab[disabled]:hover { color: var(--text-muted); }
 
   .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .mode-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
   /* ---- Setup ---- */
   .setup { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
@@ -245,99 +250,110 @@
 </style>
 </head>
 <body>
-  <div class="chrome">
-    <span class="chrome-sub" id="chromeSub">アイドル</span>
-    <button class="chrome-reset-btn" id="resetBtn" title="最初からやり直す" aria-label="最初からやり直す">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 1 1.6 3.7M3 8V4M3 8h4"/></svg>
-    </button>
+  <div class="tabs mode-tabs">
+    <button class="mode-tab active" data-mode="update">コンポーネント更新</button>
+    <button class="mode-tab" data-mode="swap-apply">ライブラリスワップ</button>
+    <button class="mode-tab" data-mode="swap-scan">ライブラリスキャン</button>
   </div>
 
   <div class="panel-body">
 
-    <!-- ① スキャン前画面 -->
-    <div class="setup" id="setupView">
-      <div class="setup-intro">ライブラリの更新があるインスタンスを検出します。スキャンする範囲を選んでください。</div>
-      <div class="setup-label">スキャン範囲</div>
-      <div class="radio-group" id="radioGroup">
-        <label class="radio-option active" data-scope="selection">
-          <span class="radio-row"><input type="radio" name="scope" value="selection" checked><span>選択範囲</span></span>
-          <span class="radio-caption">選択したフレーム／グループ等の内部も含む</span>
-        </label>
-        <label class="radio-option" data-scope="page">
-          <span class="radio-row"><input type="radio" name="scope" value="page"><span>現在のページ</span></span>
-          <span class="radio-caption">選択状態に関わらずページ全体</span>
-        </label>
-        <label class="radio-option" data-scope="all">
-          <span class="radio-row"><input type="radio" name="scope" value="all"><span>すべてのページ</span></span>
-          <span class="radio-caption">ファイル内の全ページ</span>
-        </label>
-      </div>
-      <button class="btn-big" id="scanBtn">スキャン</button>
-      <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
-    </div>
+    <div class="mode-pane" id="updateModePane">
 
-    <!-- 一括「更新」／一括「比較用インスタンスを配置」／一括「このまま更新」実行時のみのビジー画面 -->
-    <div class="busy hidden" id="busyView">
-      <div class="spinner"></div>
-      <div class="busy-label" id="busyLabel">更新しています</div>
-      <div class="busy-step" id="busyStep"></div>
-      <div class="progress-track"><div class="progress-fill" id="busyProgress"></div></div>
-    </div>
-
-    <!-- ③ スキャン結果リスト -->
-    <div class="hidden" id="resultView">
-
-      <div class="scan-progress hidden" id="scanProgressStrip">
-        <div class="scan-progress-row">
-          <span class="spinner sm"></span>
-          <span id="scanProgressText">確認中… 0 / 0</span>
-          <button class="scan-cancel-btn" id="cancelScanBtn">キャンセル</button>
+      <!-- ① スキャン前画面 -->
+      <div class="setup" id="setupView">
+        <div class="setup-intro">ライブラリの更新があるインスタンスを検出します。スキャンする範囲を選んでください。</div>
+        <div class="setup-label">スキャン範囲</div>
+        <div class="radio-group" id="radioGroup">
+          <label class="radio-option active" data-scope="selection">
+            <span class="radio-row"><input type="radio" name="scope" value="selection" checked><span>選択範囲</span></span>
+            <span class="radio-caption">選択したフレーム／グループ等の内部も含む</span>
+          </label>
+          <label class="radio-option" data-scope="page">
+            <span class="radio-row"><input type="radio" name="scope" value="page"><span>現在のページ</span></span>
+            <span class="radio-caption">選択状態に関わらずページ全体</span>
+          </label>
+          <label class="radio-option" data-scope="all">
+            <span class="radio-row"><input type="radio" name="scope" value="all"><span>すべてのページ</span></span>
+            <span class="radio-caption">ファイル内の全ページ</span>
+          </label>
         </div>
-        <div class="progress-track"><div class="progress-fill" id="scanProgressFill"></div></div>
+        <button class="btn-big" id="scanBtn">スキャン</button>
+        <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
       </div>
 
-      <div class="tabs">
-        <button class="tab active" data-tab="clean">✅️ 見た目差分なし <span class="tab-count" id="cleanCount">(0)</span></button>
-        <button class="tab" data-tab="diff">⚠️ 見た目差分あり <span class="tab-count" id="diffCount">(0)</span></button>
+      <!-- 一括「更新」／一括「比較用インスタンスを配置」／一括「このまま更新」実行時のみのビジー画面 -->
+      <div class="busy hidden" id="busyView">
+        <div class="spinner"></div>
+        <div class="busy-label" id="busyLabel">更新しています</div>
+        <div class="busy-step" id="busyStep"></div>
+        <div class="progress-track"><div class="progress-fill" id="busyProgress"></div></div>
       </div>
 
-      <div class="tab-panel" data-panel="clean">
-        <div class="list-toolbar">
-          <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
-          <span class="list-toolbar-sep">|</span>
-          <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
-          <button class="list-toolbar-link push-right" id="cleanExpandAll">すべて展開</button>
-          <span class="list-toolbar-sep">|</span>
-          <button class="list-toolbar-link" id="cleanCollapseAll">すべて折りたたむ</button>
+      <!-- ③ スキャン結果リスト -->
+      <div class="hidden" id="resultView">
+
+        <div class="scan-progress hidden" id="scanProgressStrip">
+          <div class="scan-progress-row">
+            <span class="spinner sm"></span>
+            <span id="scanProgressText">確認中… 0 / 0</span>
+            <button class="scan-cancel-btn" id="cancelScanBtn">キャンセル</button>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="scanProgressFill"></div></div>
         </div>
-        <div class="row-list" id="cleanList"></div>
-        <div class="tab-footer">
-          <div class="tab-footer-actions">
-            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="clean">✅️ 見た目差分なし <span class="tab-count" id="cleanCount">(0)</span></button>
+          <button class="tab" data-tab="diff">⚠️ 見た目差分あり <span class="tab-count" id="diffCount">(0)</span></button>
+        </div>
+
+        <div class="tab-panel" data-panel="clean">
+          <div class="list-toolbar">
+            <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
+            <button class="list-toolbar-link push-right" id="cleanExpandAll">すべて展開</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="cleanCollapseAll">すべて折りたたむ</button>
+          </div>
+          <div class="row-list" id="cleanList"></div>
+          <div class="tab-footer">
+            <div class="tab-footer-actions">
+              <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="tab-panel hidden" data-panel="diff">
-        <div class="list-toolbar">
-          <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
-          <span class="list-toolbar-sep">|</span>
-          <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
-          <button class="list-toolbar-link push-right" id="diffExpandAll">すべて展開</button>
-          <span class="list-toolbar-sep">|</span>
-          <button class="list-toolbar-link" id="diffCollapseAll">すべて折りたたむ</button>
-        </div>
-        <div class="row-list" id="diffList"></div>
-        <div class="tab-footer">
-          <div class="tab-footer-actions">
-            <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新（0件）</span></button>
-            <div class="btn-pair">
-              <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
-              <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+        <div class="tab-panel hidden" data-panel="diff">
+          <div class="list-toolbar">
+            <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
+            <button class="list-toolbar-link push-right" id="diffExpandAll">すべて展開</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="diffCollapseAll">すべて折りたたむ</button>
+          </div>
+          <div class="row-list" id="diffList"></div>
+          <div class="tab-footer">
+            <div class="tab-footer-actions">
+              <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新（0件）</span></button>
+              <div class="btn-pair">
+                <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
+                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+    </div>
+
+    <!-- ライブラリスワップ／ライブラリスキャンは後続タスクで実装 -->
+    <div class="mode-pane hidden" id="swapApplyModePane">
+      <div class="setup"><div class="setup-intro">（ライブラリスワップは実装予定です）</div></div>
+    </div>
+    <div class="mode-pane hidden" id="swapScanModePane">
+      <div class="setup"><div class="setup-intro">（ライブラリスキャンは実装予定です）</div></div>
     </div>
 
   </div>
@@ -596,13 +612,9 @@
     return s.replace(/[&<>"']/g, (c) => map[c]);
   }
   var views = { setup: $("setupView"), busy: $("busyView"), result: $("resultView") };
-  var resetBtn = $("resetBtn");
   function show(name) {
     Object.keys(views).forEach((k) => views[k].classList.toggle("hidden", k !== name));
-    resetBtn.disabled = name === "busy";
-  }
-  function setChromeSub(text) {
-    $("chromeSub").textContent = text;
+    updateModeTabsDisabledState();
   }
   var toastTimer;
   function showToast(msg) {
@@ -623,15 +635,40 @@
     markerCount = 0;
     lastClickedIndex = null;
     show("setup");
-    setChromeSub("\u30A2\u30A4\u30C9\u30EB");
   }
-  resetBtn.addEventListener("click", () => {
-    if (resetBtn.disabled) return;
-    if (scanning) {
-      post({ type: "cancel-scan" });
-    } else {
-      resetToSetup();
+  var currentMode = "update";
+  var modePanes = {
+    update: $("updateModePane"),
+    "swap-apply": $("swapApplyModePane"),
+    "swap-scan": $("swapScanModePane")
+  };
+  function updateModeTabsDisabledState() {
+    const scanningNow = scanning;
+    const bulkBusyNow = !views.busy.classList.contains("hidden");
+    document.querySelectorAll(".mode-tab").forEach((btn) => {
+      const mode = btn.dataset.mode;
+      btn.disabled = mode === currentMode ? bulkBusyNow && !scanningNow : scanningNow || bulkBusyNow;
+    });
+  }
+  function selectMode(mode) {
+    if (mode === currentMode) {
+      if (mode === "update") {
+        if (scanning) {
+          post({ type: "cancel-scan" });
+        } else if (views.busy.classList.contains("hidden")) {
+          resetToSetup();
+        }
+      }
+      return;
     }
+    currentMode = mode;
+    Object.keys(modePanes).forEach((m) => modePanes[m].classList.toggle("hidden", m !== mode));
+    document.querySelectorAll(".mode-tab").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.mode === mode);
+    });
+  }
+  document.querySelectorAll(".mode-tab").forEach((btn) => {
+    btn.addEventListener("click", () => selectMode(btn.dataset.mode));
   });
   function dataUrlFromBytes(bytes) {
     let binary = "";
@@ -734,7 +771,6 @@
     $("cancelScanBtn").disabled = false;
     updateScanProgress();
     renderTabs();
-    setChromeSub("\u30B9\u30AD\u30E3\u30F3\u4E2D\u2026");
   }
   function updateScanProgress() {
     $("scanProgressText").textContent = `\u78BA\u8A8D\u4E2D\u2026 ${scanDone} / ${scanTotal}`;
@@ -766,7 +802,6 @@
       resetToSetup();
       showToast("\u30B9\u30AD\u30E3\u30F3\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
     } else {
-      setChromeSub("\u691C\u51FA\u5B8C\u4E86");
       renderTabs();
     }
   }
@@ -972,7 +1007,6 @@
     $("busyLabel").textContent = label;
     $("busyStep").textContent = "";
     $("busyProgress").style.width = "0%";
-    setChromeSub(`${label}\u2026`);
   }
   function onBulkProgress(label, name, index, total) {
     $("busyLabel").textContent = label;
@@ -1019,7 +1053,6 @@
     renderTabs();
     show("result");
     showToast(`${ids.length}\u4EF6\u3092\u66F4\u65B0\u3057\u307E\u3057\u305F`);
-    setChromeSub("\u691C\u51FA\u5B8C\u4E86");
   }
   function onLatestPlaced(id) {
     var _a;
@@ -1035,7 +1068,6 @@
     renderTabs();
     show("result");
     showToast(`${ids.length}\u4EF6\u306B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u307E\u3057\u305F`);
-    setChromeSub("\u691C\u51FA\u5B8C\u4E86");
   }
   function onLatestToggled(id, visible) {
     latestVisible[id] = visible;

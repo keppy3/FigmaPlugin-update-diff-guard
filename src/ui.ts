@@ -77,17 +77,10 @@ function escapeHtml(s: string): string {
 
 /* ---- view switching ---- */
 const views = { setup: $("setupView"), busy: $("busyView"), result: $("resultView") };
-const resetBtn = $("resetBtn") as HTMLButtonElement;
 
 function show(name: keyof typeof views): void {
   (Object.keys(views) as Array<keyof typeof views>).forEach((k) => views[k].classList.toggle("hidden", k !== name));
-  // Reset is disabled only while a full-screen bulk operation is running —
-  // individual row actions are lightweight and don't block navigation.
-  resetBtn.disabled = name === "busy";
-}
-
-function setChromeSub(text: string): void {
-  $("chromeSub").textContent = text;
+  updateModeTabsDisabledState();
 }
 
 let toastTimer: number | undefined;
@@ -111,16 +104,49 @@ function resetToSetup(): void {
   markerCount = 0;
   lastClickedIndex = null;
   show("setup");
-  setChromeSub("アイドル");
 }
 
-resetBtn.addEventListener("click", () => {
-  if (resetBtn.disabled) return;
-  if (scanning) {
-    post({ type: "cancel-scan" }); // onScanFinished(true) will land us on setup
-  } else {
-    resetToSetup();
+/* ---- 最上部モードタブ（更新／ライブラリスワップ／ライブラリスキャン） ----
+   専用のヘッダーバー・リセットボタンは持たない。再度アクティブなタブを
+   クリックすると、そのモードの中身をリセットする（旧resetBtnの役割を兼ねる）。
+   スキャン中・一括処理中は他タブへの移動もブロックする（処理を見失わないため）。 */
+type Mode = "update" | "swap-apply" | "swap-scan";
+let currentMode: Mode = "update";
+const modePanes: Record<Mode, HTMLElement> = {
+  update: $("updateModePane"),
+  "swap-apply": $("swapApplyModePane"),
+  "swap-scan": $("swapScanModePane"),
+};
+
+function updateModeTabsDisabledState(): void {
+  const scanningNow = scanning;
+  const bulkBusyNow = !views.busy.classList.contains("hidden");
+  document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
+    const mode = btn.dataset.mode as Mode;
+    btn.disabled = mode === currentMode ? bulkBusyNow && !scanningNow : scanningNow || bulkBusyNow;
+  });
+}
+
+function selectMode(mode: Mode): void {
+  if (mode === currentMode) {
+    if (mode === "update") {
+      if (scanning) {
+        post({ type: "cancel-scan" }); // onScanFinished(true) will land us on setup
+      } else if (views.busy.classList.contains("hidden")) {
+        resetToSetup();
+      }
+    }
+    return;
   }
+  currentMode = mode;
+  (Object.keys(modePanes) as Mode[]).forEach((m) => modePanes[m].classList.toggle("hidden", m !== mode));
+  document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === mode);
+  });
+}
+
+document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
+  btn.addEventListener("click", () => selectMode(btn.dataset.mode as Mode));
 });
 
 /* ---- image helpers ---- */
@@ -249,7 +275,6 @@ function onScanStarted(total: number): void {
   ($("cancelScanBtn") as HTMLButtonElement).disabled = false;
   updateScanProgress();
   renderTabs();
-  setChromeSub("スキャン中…");
 }
 
 function updateScanProgress(): void {
@@ -285,7 +310,6 @@ function onScanFinished(cancelled: boolean): void {
     resetToSetup();
     showToast("スキャンを中止しました");
   } else {
-    setChromeSub("検出完了");
     renderTabs();
   }
 }
@@ -538,7 +562,6 @@ function showBulkBusy(label: string): void {
   $("busyLabel").textContent = label;
   $("busyStep").textContent = "";
   ($("busyProgress").style as CSSStyleDeclaration).width = "0%";
-  setChromeSub(`${label}…`);
 }
 
 function onBulkProgress(label: string, name: string, index: number, total: number): void {
@@ -592,7 +615,6 @@ function onApplyBulkDone(ids: string[]): void {
   renderTabs();
   show("result");
   showToast(`${ids.length}件を更新しました`);
-  setChromeSub("検出完了");
 }
 
 function onLatestPlaced(id: string): void {
@@ -609,7 +631,6 @@ function onLatestPlacedBulk(ids: string[]): void {
   renderTabs();
   show("result");
   showToast(`${ids.length}件に比較用インスタンスを配置しました`);
-  setChromeSub("検出完了");
 }
 
 function onLatestToggled(id: string, visible: boolean): void {
