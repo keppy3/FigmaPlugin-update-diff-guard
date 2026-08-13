@@ -462,6 +462,10 @@ async function handleScanLibrary(): Promise<void> {
     for (const node of found) {
       if (node.type === "COMPONENT_SET") {
         if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
+        // Publish対象のコンポーネントを組み立てるための未公開ベースコンポーネント
+        // （そのファイル内でしか使わないローカル部品）を除外する。CURRENT/CHANGEDは
+        // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
+        if ((await node.getPublishStatusAsync()) === "UNPUBLISHED") continue;
         const variantProps: Record<string, string[]> = {};
         for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
           variantProps[prop] = info.values;
@@ -480,6 +484,7 @@ async function handleScanLibrary(): Promise<void> {
         // 単体コンポーネントとしては数えない。
         if (node.parent?.type === "COMPONENT_SET") continue;
         if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
+        if ((await node.getPublishStatusAsync()) === "UNPUBLISHED") continue; // 未公開のベース部品
         components.push({ name: node.name, key: node.key, path: nodePath(node) });
       }
     }

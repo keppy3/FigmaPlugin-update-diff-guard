@@ -277,6 +277,7 @@
       for (const node of found) {
         if (node.type === "COMPONENT_SET") {
           if (hasComponentAncestor(node)) continue;
+          if (await node.getPublishStatusAsync() === "UNPUBLISHED") continue;
           const variantProps = {};
           for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
             variantProps[prop] = info.values;
@@ -294,6 +295,7 @@
         } else if (node.type === "COMPONENT") {
           if (((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") continue;
           if (hasComponentAncestor(node)) continue;
+          if (await node.getPublishStatusAsync() === "UNPUBLISHED") continue;
           components.push({ name: node.name, key: node.key, path: nodePath(node) });
         }
       }
