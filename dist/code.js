@@ -364,6 +364,19 @@
     for (const c of mapping.components) nameToComponent.set(c.name, c);
     const nameToSet = /* @__PURE__ */ new Map();
     for (const s of mapping.componentSets) nameToSet.set(s.name, s);
+    const swapStrayThumbnailSent = /* @__PURE__ */ new Set();
+    async function postSwapExcluded(inst, reason, category) {
+      const groupKey = `${inst.name} ${reason}`;
+      let thumbnail;
+      if (!swapStrayThumbnailSent.has(groupKey)) {
+        swapStrayThumbnailSent.add(groupKey);
+        try {
+          thumbnail = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+        } catch (e) {
+        }
+      }
+      post({ type: "swap-scan-item-excluded", id: inst.id, name: inst.name, reason, category, thumbnail });
+    }
     const targets = await collectTargets(scope);
     post({ type: "swap-scan-started", total: targets.length });
     for (const inst of targets) {
@@ -376,13 +389,7 @@
           main = null;
         }
         if (!main) {
-          post({
-            type: "swap-scan-item-excluded",
-            id: inst.id,
-            name: inst.name,
-            reason: "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8",
-            category: "other"
-          });
+          await postSwapExcluded(inst, "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8", "other");
           continue;
         }
         const parent = main.parent;
@@ -390,26 +397,14 @@
         const matchName = isSet ? parent.name : main.name;
         const result = resolveSwapTarget(matchName, isSet, inst.variantProperties, nameToComponent, nameToSet);
         if ("reason" in result) {
-          post({
-            type: "swap-scan-item-excluded",
-            id: inst.id,
-            name: inst.name,
-            reason: result.reason,
-            category: result.category
-          });
+          await postSwapExcluded(inst, result.reason, result.category);
           continue;
         }
         let target;
         try {
           target = await figma.importComponentByKeyAsync(result.key);
         } catch (e) {
-          post({
-            type: "swap-scan-item-excluded",
-            id: inst.id,
-            name: inst.name,
-            reason: "\u5BFE\u5FDC\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557\u3057\u307E\u3057\u305F",
-            category: "other"
-          });
+          await postSwapExcluded(inst, "\u5BFE\u5FDC\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557\u3057\u307E\u3057\u305F", "other");
           continue;
         }
         if (swapScanCancelled) break;
@@ -417,13 +412,7 @@
         await computeAndSendDiff(inst, target, "swap-scan-item-result");
       } catch (e) {
         store.delete(inst.id);
-        post({
-          type: "swap-scan-item-excluded",
-          id: inst.id,
-          name: inst.name,
-          reason: "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09",
-          category: "other"
-        });
+        await postSwapExcluded(inst, "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09", "other");
       }
       figma.commitUndo();
     }

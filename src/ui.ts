@@ -64,16 +64,28 @@ let lastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
 // 中身（行の描画・タブ切り替え・一括操作）は更新フローとほぼ同じロジックだが、
 // DOM/状態を完全に分けている。config.ts側はstore/wrapperStoreを共有し、
 // sourceタグでメッセージ種別だけ振り分けている（§code.ts参照）。
-interface SwapStrayEntry {
+interface SwapStrayItemMsg {
   id: string;
   name: string;
   reason: string;
   category: "name" | "variant" | "other";
+  thumbnail?: Uint8Array; // グループの最初の1件だけcode.ts側が付けてくる
+}
+// 迷子は同名・同理由のインスタンスが大量に並びがちなので、名前＋理由の組み合わせ
+// でまとめて1行にする。サムネイルもグループの最初の1件分だけ（オーバーライドで
+// 個体差があっても、全件分は重くなるため代表1枚に留める）。
+interface SwapStrayGroup {
+  name: string;
+  reason: string;
+  category: "name" | "variant" | "other";
+  count: number;
+  firstId: string; // ジャンプボタンの飛び先（グループ内最初の1件）
+  thumbnailUrl?: string;
 }
 const swapRows = new Map<string, RowData>();
 let swapCleanIds: string[] = [];
 let swapDiffIds: string[] = [];
-let swapStrayEntries: SwapStrayEntry[] = [];
+const swapStrayGroups = new Map<string, SwapStrayGroup>(); // key: `${name} ${reason}`
 const swapChecked: Record<string, boolean> = {};
 const swapLatestVisible: Record<string, boolean> = {};
 let swapScanning = false;
@@ -937,7 +949,7 @@ function resetSwapToPaste(): void {
   swapRows.clear();
   swapCleanIds = [];
   swapDiffIds = [];
-  swapStrayEntries = [];
+  swapStrayGroups.clear();
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
   Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
@@ -954,7 +966,7 @@ function onSwapScanStarted(total: number): void {
   swapRows.clear();
   swapCleanIds = [];
   swapDiffIds = [];
-  swapStrayEntries = [];
+  swapStrayGroups.clear();
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
   Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
@@ -977,8 +989,21 @@ function updateSwapScanProgress(): void {
     : "0%";
 }
 
-function onSwapScanExcluded(entry: SwapStrayEntry): void {
-  swapStrayEntries.push(entry);
+function onSwapScanExcluded(msg: SwapStrayItemMsg): void {
+  const key = `${msg.name} ${msg.reason}`;
+  const existing = swapStrayGroups.get(key);
+  if (existing) {
+    existing.count++;
+  } else {
+    swapStrayGroups.set(key, {
+      name: msg.name,
+      reason: msg.reason,
+      category: msg.category,
+      count: 1,
+      firstId: msg.id,
+      thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : undefined,
+    });
+  }
   swapScanDone++;
   updateSwapScanProgress();
   renderSwapTabs();
@@ -1076,32 +1101,41 @@ function swapDiffRowHtml(id: string, justEntered: boolean): string {
   </details>`;
 }
 
-/* ---- ライブラリスワップ: 迷子タブ（🧭） ---- */
-function swapStrayRowHtml(entry: SwapStrayEntry): string {
+/* ---- ライブラリスワップ: 迷子タブ（🧭）----
+   同名・同理由のインスタンスは1行にまとめ、件数とグループ代表1件分の
+   サムネイル（あれば）だけを表示する。オーバーライドで個体差があっても
+   全件分のサムネイルは持たない（§code.ts参照）。 */
+function swapStrayRowHtml(group: SwapStrayGroup): string {
+  const thumb = group.thumbnailUrl
+    ? `<img src="${group.thumbnailUrl}" alt="">`
+    : "";
   return `<div class="stray-row">
+    <div class="stray-thumb">${thumb}</div>
     <div style="flex:1; min-width:0;">
-      <div class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</div>
-      <div class="stray-reason">${escapeHtml(entry.reason)}</div>
+      <div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.count > 1 ? ` <span class="stray-count">×${group.count}件</span>` : ""}</div>
+      <div class="stray-reason">${escapeHtml(group.reason)}</div>
     </div>
-    <button class="ghost-btn" data-jump="${entry.id}">${JUMP_ICON}ジャンプ</button>
+    <button class="ghost-btn" data-jump="${group.firstId}">${JUMP_ICON}ジャンプ</button>
   </div>`;
 }
 
 function renderSwapStray(): void {
-  const byName = swapStrayEntries.filter((e) => e.category === "name");
-  const byVariant = swapStrayEntries.filter((e) => e.category === "variant");
-  const byOther = swapStrayEntries.filter((e) => e.category === "other");
+  const groups = Array.from(swapStrayGroups.values());
+  const byName = groups.filter((g) => g.category === "name");
+  const byVariant = groups.filter((g) => g.category === "variant");
+  const byOther = groups.filter((g) => g.category === "other");
+  const sumCount = (gs: SwapStrayGroup[]): number => gs.reduce((sum, g) => sum + g.count, 0);
   let html = "";
   if (byName.length) {
-    html += `<div class="stray-group-head">名前が一致しません (${byName.length})</div>`;
+    html += `<div class="stray-group-head">名前が一致しません (${sumCount(byName)})</div>`;
     html += byName.map(swapStrayRowHtml).join("");
   }
   if (byVariant.length) {
-    html += `<div class="stray-group-head">バリアントの組み合わせが一致しません (${byVariant.length})</div>`;
+    html += `<div class="stray-group-head">バリアントの組み合わせが一致しません (${sumCount(byVariant)})</div>`;
     html += byVariant.map(swapStrayRowHtml).join("");
   }
   if (byOther.length) {
-    html += `<div class="stray-group-head">その他 (${byOther.length})</div>`;
+    html += `<div class="stray-group-head">その他 (${sumCount(byOther)})</div>`;
     html += byOther.map(swapStrayRowHtml).join("");
   }
   $("swapStrayList").innerHTML = html || '<div class="empty-state">迷子の項目はありません</div>';
@@ -1115,7 +1149,7 @@ function swapEmptyState(kind: "clean" | "diff"): string {
 function renderSwapTabs(justEnteredId?: string): void {
   $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
   $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
-  $("swapStrayCount").textContent = `(${swapStrayEntries.length})`;
+  $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.count, 0)})`;
 
   $("swapCleanList").innerHTML = swapCleanIds.length
     ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
@@ -1404,7 +1438,7 @@ window.onmessage = (event: MessageEvent) => {
       onSwapScanStarted(msg.total);
       break;
     case "swap-scan-item-excluded":
-      onSwapScanExcluded({ id: msg.id, name: msg.name, reason: msg.reason, category: msg.category });
+      onSwapScanExcluded({ id: msg.id, name: msg.name, reason: msg.reason, category: msg.category, thumbnail: msg.thumbnail });
       break;
     case "swap-scan-item-result":
       void onSwapScanItemResult(msg);

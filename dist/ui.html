@@ -293,9 +293,16 @@
     padding: 9px 14px 5px; font-size: 10.5px; font-weight: 700; color: var(--text-muted);
     display: flex; align-items: center; gap: 6px; background: var(--row-hover);
   }
-  .stray-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 37px; border-bottom: 1px solid var(--divider); }
+  .stray-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--divider); }
   .stray-row .row-name { font-size: 11.5px; }
   .stray-reason { font-size: 10px; color: var(--text-faint); }
+  .stray-count { font-weight: 600; color: var(--text-muted); }
+  .stray-thumb {
+    width: 44px; height: 32px; border-radius: 6px; border: 1px solid var(--panel-border);
+    background: var(--row-hover); display: flex; align-items: center; justify-content: center;
+    overflow: hidden; flex: none;
+  }
+  .stray-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .annotation-note {
     display: flex; align-items: flex-start; gap: 7px; padding: 10px 14px; font-size: 10px; color: var(--text-muted);
     background: var(--chrome-bg); border-top: 1px solid var(--panel-border); line-height: 1.6;
@@ -788,7 +795,7 @@
   var swapRows = /* @__PURE__ */ new Map();
   var swapCleanIds = [];
   var swapDiffIds = [];
-  var swapStrayEntries = [];
+  var swapStrayGroups = /* @__PURE__ */ new Map();
   var swapChecked = {};
   var swapLatestVisible = {};
   var swapScanning = false;
@@ -1459,7 +1466,7 @@
     swapRows.clear();
     swapCleanIds = [];
     swapDiffIds = [];
-    swapStrayEntries = [];
+    swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
     Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
@@ -1474,7 +1481,7 @@
     swapRows.clear();
     swapCleanIds = [];
     swapDiffIds = [];
-    swapStrayEntries = [];
+    swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
     Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
@@ -1492,8 +1499,21 @@
     $("swapScanProgressText").textContent = `\u78BA\u8A8D\u4E2D\u2026 ${swapScanDone} / ${swapScanTotal}`;
     $("swapScanProgressFill").style.width = swapScanTotal ? `${Math.round(swapScanDone / swapScanTotal * 100)}%` : "0%";
   }
-  function onSwapScanExcluded(entry) {
-    swapStrayEntries.push(entry);
+  function onSwapScanExcluded(msg) {
+    const key = `${msg.name} ${msg.reason}`;
+    const existing = swapStrayGroups.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      swapStrayGroups.set(key, {
+        name: msg.name,
+        reason: msg.reason,
+        category: msg.category,
+        count: 1,
+        firstId: msg.id,
+        thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : void 0
+      });
+    }
     swapScanDone++;
     updateSwapScanProgress();
     renderSwapTabs();
@@ -1581,30 +1601,34 @@
     </div>
   </details>`;
   }
-  function swapStrayRowHtml(entry) {
+  function swapStrayRowHtml(group) {
+    const thumb = group.thumbnailUrl ? `<img src="${group.thumbnailUrl}" alt="">` : "";
     return `<div class="stray-row">
+    <div class="stray-thumb">${thumb}</div>
     <div style="flex:1; min-width:0;">
-      <div class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</div>
-      <div class="stray-reason">${escapeHtml(entry.reason)}</div>
+      <div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.count > 1 ? ` <span class="stray-count">\xD7${group.count}\u4EF6</span>` : ""}</div>
+      <div class="stray-reason">${escapeHtml(group.reason)}</div>
     </div>
-    <button class="ghost-btn" data-jump="${entry.id}">${JUMP_ICON}\u30B8\u30E3\u30F3\u30D7</button>
+    <button class="ghost-btn" data-jump="${group.firstId}">${JUMP_ICON}\u30B8\u30E3\u30F3\u30D7</button>
   </div>`;
   }
   function renderSwapStray() {
-    const byName = swapStrayEntries.filter((e) => e.category === "name");
-    const byVariant = swapStrayEntries.filter((e) => e.category === "variant");
-    const byOther = swapStrayEntries.filter((e) => e.category === "other");
+    const groups = Array.from(swapStrayGroups.values());
+    const byName = groups.filter((g) => g.category === "name");
+    const byVariant = groups.filter((g) => g.category === "variant");
+    const byOther = groups.filter((g) => g.category === "other");
+    const sumCount = (gs) => gs.reduce((sum, g) => sum + g.count, 0);
     let html = "";
     if (byName.length) {
-      html += `<div class="stray-group-head">\u540D\u524D\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093 (${byName.length})</div>`;
+      html += `<div class="stray-group-head">\u540D\u524D\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093 (${sumCount(byName)})</div>`;
       html += byName.map(swapStrayRowHtml).join("");
     }
     if (byVariant.length) {
-      html += `<div class="stray-group-head">\u30D0\u30EA\u30A2\u30F3\u30C8\u306E\u7D44\u307F\u5408\u308F\u305B\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093 (${byVariant.length})</div>`;
+      html += `<div class="stray-group-head">\u30D0\u30EA\u30A2\u30F3\u30C8\u306E\u7D44\u307F\u5408\u308F\u305B\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093 (${sumCount(byVariant)})</div>`;
       html += byVariant.map(swapStrayRowHtml).join("");
     }
     if (byOther.length) {
-      html += `<div class="stray-group-head">\u305D\u306E\u4ED6 (${byOther.length})</div>`;
+      html += `<div class="stray-group-head">\u305D\u306E\u4ED6 (${sumCount(byOther)})</div>`;
       html += byOther.map(swapStrayRowHtml).join("");
     }
     $("swapStrayList").innerHTML = html || '<div class="empty-state">\u8FF7\u5B50\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
@@ -1616,7 +1640,7 @@
   function renderSwapTabs(justEnteredId) {
     $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
     $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
-    $("swapStrayCount").textContent = `(${swapStrayEntries.length})`;
+    $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.count, 0)})`;
     $("swapCleanList").innerHTML = swapCleanIds.length ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
     $("swapDiffList").innerHTML = swapDiffIds.length ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
     renderSwapStray();
@@ -1872,7 +1896,7 @@
         onSwapScanStarted(msg.total);
         break;
       case "swap-scan-item-excluded":
-        onSwapScanExcluded({ id: msg.id, name: msg.name, reason: msg.reason, category: msg.category });
+        onSwapScanExcluded({ id: msg.id, name: msg.name, reason: msg.reason, category: msg.category, thumbnail: msg.thumbnail });
         break;
       case "swap-scan-item-result":
         void onSwapScanItemResult(msg);

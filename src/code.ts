@@ -587,6 +587,30 @@ async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promi
   const nameToSet = new Map<string, LibraryComponentSetEntry>();
   for (const s of mapping.componentSets) nameToSet.set(s.name, s);
 
+  // 迷子は同名・同理由のインスタンスが大量に並びがち（ui.ts側で名前＋理由単位に
+  // まとめて表示する）。サムネイルもグループにつき1回だけ取得すれば十分なので、
+  // 既にサムネイルを送った組み合わせはスキップする（クローンもスワップも伴わない
+  // ただのexportAsyncなので、差分計算に比べて軽く、安全＝キャンバスに何も残さない）。
+  const swapStrayThumbnailSent = new Set<string>();
+
+  async function postSwapExcluded(
+    inst: InstanceNode,
+    reason: string,
+    category: "name" | "variant" | "other"
+  ): Promise<void> {
+    const groupKey = `${inst.name} ${reason}`;
+    let thumbnail: Uint8Array | undefined;
+    if (!swapStrayThumbnailSent.has(groupKey)) {
+      swapStrayThumbnailSent.add(groupKey);
+      try {
+        thumbnail = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+      } catch {
+        // サムネイル取得に失敗しても除外自体は続行する（見た目確認ができないだけ）
+      }
+    }
+    post({ type: "swap-scan-item-excluded", id: inst.id, name: inst.name, reason, category, thumbnail });
+  }
+
   const targets = await collectTargets(scope);
   post({ type: "swap-scan-started", total: targets.length });
 
@@ -602,13 +626,7 @@ async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promi
       }
 
       if (!main) {
-        post({
-          type: "swap-scan-item-excluded",
-          id: inst.id,
-          name: inst.name,
-          reason: "未パブリッシュのローカルコンポーネント",
-          category: "other",
-        });
+        await postSwapExcluded(inst, "未パブリッシュのローカルコンポーネント", "other");
         continue;
       }
 
@@ -618,13 +636,7 @@ async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promi
 
       const result = resolveSwapTarget(matchName, isSet, inst.variantProperties, nameToComponent, nameToSet);
       if ("reason" in result) {
-        post({
-          type: "swap-scan-item-excluded",
-          id: inst.id,
-          name: inst.name,
-          reason: result.reason,
-          category: result.category,
-        });
+        await postSwapExcluded(inst, result.reason, result.category);
         continue;
       }
 
@@ -632,13 +644,7 @@ async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promi
       try {
         target = await figma.importComponentByKeyAsync(result.key);
       } catch {
-        post({
-          type: "swap-scan-item-excluded",
-          id: inst.id,
-          name: inst.name,
-          reason: "対応するコンポーネントの取得に失敗しました",
-          category: "other",
-        });
+        await postSwapExcluded(inst, "対応するコンポーネントの取得に失敗しました", "other");
         continue;
       }
 
@@ -648,13 +654,7 @@ async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promi
       await computeAndSendDiff(inst, target, "swap-scan-item-result");
     } catch {
       store.delete(inst.id);
-      post({
-        type: "swap-scan-item-excluded",
-        id: inst.id,
-        name: inst.name,
-        reason: "比較中にエラーが発生しました（編集された可能性があります）",
-        category: "other",
-      });
+      await postSwapExcluded(inst, "比較中にエラーが発生しました（編集された可能性があります）", "other");
     }
 
     figma.commitUndo();
