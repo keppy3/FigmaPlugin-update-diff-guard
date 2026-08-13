@@ -60,6 +60,29 @@ let markerCount = 0;
 const expandedIds: Record<string, boolean> = {};
 let lastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
 
+// ---- ライブラリスワップの結果画面用の状態（更新フローとは別に持つ） ----
+// 中身（行の描画・タブ切り替え・一括操作）は更新フローとほぼ同じロジックだが、
+// DOM/状態を完全に分けている。config.ts側はstore/wrapperStoreを共有し、
+// sourceタグでメッセージ種別だけ振り分けている（§code.ts参照）。
+interface SwapStrayEntry {
+  id: string;
+  name: string;
+  reason: string;
+  category: "name" | "variant" | "other";
+}
+const swapRows = new Map<string, RowData>();
+let swapCleanIds: string[] = [];
+let swapDiffIds: string[] = [];
+let swapStrayEntries: SwapStrayEntry[] = [];
+const swapChecked: Record<string, boolean> = {};
+const swapLatestVisible: Record<string, boolean> = {};
+let swapScanning = false;
+let swapScanTotal = 0;
+let swapScanDone = 0;
+const swapExpandedIds: Record<string, boolean> = {};
+let swapLastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
+const swapViews = { paste: $("swapPasteView"), busy: $("swapBulkBusyView"), result: $("swapResultView") };
+
 function post(msg: Record<string, unknown>): void {
   parent.postMessage({ pluginMessage: msg }, "*");
 }
@@ -119,11 +142,24 @@ const modePanes: Record<Mode, HTMLElement> = {
 };
 
 function updateModeTabsDisabledState(): void {
-  const scanningNow = scanning;
-  const bulkBusyNow = !views.busy.classList.contains("hidden");
+  const updateBusy = scanning || !views.busy.classList.contains("hidden");
+  const swapBusy = swapScanning || !swapViews.busy.classList.contains("hidden");
+  const anyOtherModeBusy = updateBusy || swapBusy;
   document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
     const mode = btn.dataset.mode as Mode;
-    btn.disabled = mode === currentMode ? bulkBusyNow && !scanningNow : scanningNow || bulkBusyNow;
+    if (mode === "update") {
+      btn.disabled = mode === currentMode
+        ? !views.busy.classList.contains("hidden") && !scanning
+        : anyOtherModeBusy;
+    } else if (mode === "swap-apply") {
+      btn.disabled = mode === currentMode
+        ? !swapViews.busy.classList.contains("hidden") && !swapScanning
+        : anyOtherModeBusy;
+    } else {
+      // swap-scan自体はブロッキング処理を持たないが、他モードが処理中なら
+      // やはり移動をブロックする。
+      btn.disabled = anyOtherModeBusy;
+    }
   });
 }
 
@@ -137,6 +173,12 @@ function selectMode(mode: Mode): void {
       }
     } else if (mode === "swap-scan") {
       showScanLib("intro");
+    } else if (mode === "swap-apply") {
+      if (swapScanning) {
+        post({ type: "cancel-swap-scan" });
+      } else if (swapViews.busy.classList.contains("hidden")) {
+        resetSwapToPaste();
+      }
     }
     return;
   }
@@ -243,7 +285,7 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
 $("radioGroup").addEventListener("change", (e) => {
   const target = e.target as HTMLInputElement;
   if (target.name !== "scope") return;
-  document.querySelectorAll(".radio-option").forEach((opt) => {
+  document.querySelectorAll("#radioGroup .radio-option").forEach((opt) => {
     opt.classList.toggle("active", opt.getAttribute("data-scope") === target.value);
   });
 });
@@ -316,12 +358,15 @@ function onScanFinished(cancelled: boolean): void {
   }
 }
 
-/* ---- タブ切り替え ---- */
-document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tabBtn) => {
+/* ---- タブ切り替え（見た目差分なし／あり） ----
+   ライブラリスワップ側にも見た目は同じ .tab/.tab-panel を使う別ルート
+   （data-swaptab/data-swappanel、下部で配線）を用意している。同じクラスを
+   共有するので、ここは #resultView 配下だけに絞って衝突を避ける。 */
+document.querySelectorAll<HTMLButtonElement>("#resultView .tab").forEach((tabBtn) => {
   tabBtn.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tabBtn));
+    document.querySelectorAll("#resultView .tab").forEach((t) => t.classList.toggle("active", t === tabBtn));
     const name = tabBtn.getAttribute("data-tab");
-    document.querySelectorAll(".tab-panel").forEach((p) => {
+    document.querySelectorAll("#resultView .tab-panel").forEach((p) => {
       p.classList.toggle("hidden", p.getAttribute("data-panel") !== name);
     });
   });
@@ -464,7 +509,7 @@ function wireRowEvents(): void {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-individual-force")!;
-      openForceConfirm({ kind: "single", id, btn });
+      openForceConfirm({ kind: "single", id, btn, mode: "update" });
     });
   });
   document.querySelectorAll<HTMLButtonElement>("#resultView [data-place-latest]").forEach((btn) => {
@@ -593,7 +638,7 @@ $("clearAllLatestBtn").addEventListener("click", () => {
 $("forceUpdateBtn").addEventListener("click", () => {
   const targets = diffIds.filter((id) => checked[id]);
   if (targets.length === 0) return;
-  openForceConfirm({ kind: "bulk", ids: targets });
+  openForceConfirm({ kind: "bulk", ids: targets, mode: "update" });
 });
 
 function removeResolvedId(id: string): void {
@@ -654,23 +699,36 @@ function onLatestRemoved(id: string): void {
 // instead of staying stuck offering a toggle/delete pair for a wrapper
 // that no longer exists.
 function onMarkersCleared(ids: string[] | undefined, count: number): void {
-  (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
+  // 全件掃除は出所（更新／スワップ）を問わないので、両モードのlatestVisible状態を
+  // まとめて片付け、両方の行リストを再描画する。
+  const targetIds = ids && ids.length ? ids : [...Object.keys(latestVisible), ...Object.keys(swapLatestVisible)];
+  targetIds.forEach((id) => {
+    delete latestVisible[id];
+    delete swapLatestVisible[id];
+  });
   renderTabs();
+  renderSwapTabs();
   showToast(`比較用インスタンスを${count}件削除しました`);
 }
 
-/* ---- このまま更新の確認ダイアログ ---- */
-type PendingForce = { kind: "single"; id: string; btn: HTMLButtonElement } | { kind: "bulk"; ids: string[] };
+/* ---- このまま更新／このままスワップの確認ダイアログ（両モード共有） ---- */
+type PendingForce =
+  | { kind: "single"; id: string; btn: HTMLButtonElement; mode: "update" | "swap" }
+  | { kind: "bulk"; ids: string[]; mode: "update" | "swap" };
 let pendingForce: PendingForce | null = null;
 
 function targetHasPlacedLatest(target: PendingForce): boolean {
-  const has = (id: string): boolean => Object.prototype.hasOwnProperty.call(latestVisible, id);
+  const visibleMap = target.mode === "swap" ? swapLatestVisible : latestVisible;
+  const has = (id: string): boolean => Object.prototype.hasOwnProperty.call(visibleMap, id);
   return target.kind === "single" ? has(target.id) : target.ids.some(has);
 }
 
 function openForceConfirm(target: PendingForce): void {
   pendingForce = target;
-  $("confirmBody").textContent = "更新すると現在の見た目から差異が生じます。よろしいですか？";
+  $("confirmBody").textContent =
+    target.mode === "swap"
+      ? "スワップすると現在の見た目から差異が生じます。よろしいですか？"
+      : "更新すると現在の見た目から差異が生じます。よろしいですか？";
 
   // Only relevant (and only shown) when at least one target row currently
   // has a placed Latest preview — otherwise there's nothing to offer a
@@ -694,12 +752,16 @@ $("modalConfirm").addEventListener("click", () => {
   $("confirmOverlay").classList.add("hidden");
   if (!pendingForce) return;
   const removeLatest = (($("confirmRemoveLatest") as HTMLInputElement).checked);
+  const isSwap = pendingForce.mode === "swap";
   if (pendingForce.kind === "single") {
     pendingForce.btn.disabled = true;
-    pendingForce.btn.textContent = "更新中…";
+    pendingForce.btn.textContent = isSwap ? "スワップ中…" : "更新中…";
     // Jump straight there so the user immediately sees what they just
     // confirmed updating — code.ts does this before the write itself.
     post({ type: "apply", id: pendingForce.id, jump: true, removeLatest });
+  } else if (isSwap) {
+    showSwapBulkBusy("スワップしています");
+    post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
   } else {
     showBulkBusy("更新しています");
     post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
@@ -710,10 +772,12 @@ $("modalConfirm").addEventListener("click", () => {
 /* ---- マーカー（配置済みLatestプレビュー）件数 ---- */
 // Drives only the "比較用インスタンスをすべて削除" button's label/disabled state now
 // — the standalone marker-strip display + its own "すべて削除" button
-// were removed since they duplicated that button's role.
+// were removed since they duplicated that button's role。更新／スワップ両モードの
+// フッターボタンが同じmarkerCountを参照するので、両方更新する。
 function setMarkerCount(count: number): void {
   markerCount = count;
   updateFooterButtons();
+  updateSwapFooterButtons();
 }
 
 /* ---- ライブラリスキャン（スワップ先コンポーネントリストの作成） ---- */
@@ -858,6 +922,427 @@ $("swapScanBtn").addEventListener("click", () => {
   post({ type: "scan-swap", scope: checkedRadio ? checkedRadio.value : "selection", mapping: parsedSwapMapping });
 });
 
+/* ---- ライブラリスワップ: スキャン結果画面（✅️/⚠️/🧭タブ） ----
+   更新フローと見た目・操作は揃えつつ、DOM/状態は完全に分けている
+   （code.ts側はstore/wrapperStoreを共有し、sourceタグでどちらのモード向け
+   メッセージかだけを振り分けている）。 */
+function showSwap(name: keyof typeof swapViews): void {
+  (Object.keys(swapViews) as Array<keyof typeof swapViews>).forEach((k) =>
+    swapViews[k].classList.toggle("hidden", k !== name)
+  );
+  updateModeTabsDisabledState();
+}
+
+function resetSwapToPaste(): void {
+  swapRows.clear();
+  swapCleanIds = [];
+  swapDiffIds = [];
+  swapStrayEntries = [];
+  Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
+  Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
+  Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
+  swapLastClickedIndex = null;
+  showSwap("paste");
+}
+
+$("swapCancelScanBtn").addEventListener("click", (e) => {
+  (e.currentTarget as HTMLButtonElement).disabled = true;
+  post({ type: "cancel-swap-scan" });
+});
+
+function onSwapScanStarted(total: number): void {
+  swapRows.clear();
+  swapCleanIds = [];
+  swapDiffIds = [];
+  swapStrayEntries = [];
+  Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
+  Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
+  Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
+  swapScanning = true;
+  swapScanTotal = total;
+  swapScanDone = 0;
+  swapLastClickedIndex = null;
+
+  showSwap("result");
+  $("swapScanProgressStrip").classList.remove("hidden");
+  ($("swapCancelScanBtn") as HTMLButtonElement).disabled = false;
+  updateSwapScanProgress();
+  renderSwapTabs();
+}
+
+function updateSwapScanProgress(): void {
+  $("swapScanProgressText").textContent = `確認中… ${swapScanDone} / ${swapScanTotal}`;
+  ($("swapScanProgressFill").style as CSSStyleDeclaration).width = swapScanTotal
+    ? `${Math.round((swapScanDone / swapScanTotal) * 100)}%`
+    : "0%";
+}
+
+function onSwapScanExcluded(entry: SwapStrayEntry): void {
+  swapStrayEntries.push(entry);
+  swapScanDone++;
+  updateSwapScanProgress();
+  renderSwapTabs();
+}
+
+async function onSwapScanItemResult(msg: ScanItemMsg): Promise<void> {
+  const row = await processDiff(msg);
+  swapRows.set(row.id, row);
+  if (row.status === "clean") {
+    swapCleanIds.push(row.id);
+  } else {
+    swapDiffIds.push(row.id);
+  }
+  swapChecked[row.id] = true;
+  swapScanDone++;
+  updateSwapScanProgress();
+  renderSwapTabs(row.id);
+}
+
+function onSwapScanFinished(cancelled: boolean): void {
+  swapScanning = false;
+  $("swapScanProgressStrip").classList.add("hidden");
+  if (cancelled) {
+    resetSwapToPaste();
+    showToast("スキャンを中止しました");
+  } else {
+    renderSwapTabs();
+  }
+  updateModeTabsDisabledState();
+}
+
+/* ---- ライブラリスワップ: タブ切り替え（見た目差分なし／あり／迷子） ---- */
+document.querySelectorAll<HTMLButtonElement>("#swapResultView .tab").forEach((tabBtn) => {
+  tabBtn.addEventListener("click", () => {
+    document.querySelectorAll("#swapResultView .tab").forEach((t) => t.classList.toggle("active", t === tabBtn));
+    const name = tabBtn.getAttribute("data-swaptab");
+    document.querySelectorAll("#swapResultView .tab-panel").forEach((p) => {
+      p.classList.toggle("hidden", p.getAttribute("data-swappanel") !== name);
+    });
+  });
+});
+
+/* ---- ライブラリスワップ: 行の描画 ---- */
+function swapCleanRowHtml(id: string, justEntered: boolean): string {
+  const row = swapRows.get(id);
+  if (!row) return "";
+  const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
+  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
+    <summary class="row-summary">
+      ${checkbox}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="row-detail">
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = スワップ後（完全一致）</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
+      </div>
+      <div class="row-buttons"><button class="ghost-btn accent" data-swap-individual-update="${id}">スワップする</button></div>
+    </div>
+  </details>`;
+}
+
+function swapDiffRowButtons(id: string): string {
+  const forceBtn = `<button class="ghost-btn accent" data-swap-individual-force="${id}">このままスワップ</button>`;
+  const placed = Object.prototype.hasOwnProperty.call(swapLatestVisible, id);
+  if (!placed) {
+    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-swap-place-latest="${id}">比較用インスタンスを配置</button></div>`;
+  }
+  const eyeIcon = swapLatestVisible[id] ? EYE_OPEN : EYE_CLOSED;
+  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-swap-remove-latest="${id}">比較用インスタンスを削除</button><button class="ghost-btn" data-swap-toggle-latest="${id}">${eyeIcon}表示/非表示</button></div>`;
+}
+
+function swapDiffRowHtml(id: string, justEntered: boolean): string {
+  const row = swapRows.get(id);
+  if (!row) return "";
+  const latestLabel = row.sizeMismatch
+    ? "スワップ後（サイズ不一致）"
+    : `スワップ後（差分${(row.diffPercent ?? 0).toFixed(1)}%）`;
+  const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
+  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
+    <summary class="row-summary">
+      ${checkbox}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="row-detail">
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">${latestLabel}</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
+      </div>
+      ${swapDiffRowButtons(id)}
+    </div>
+  </details>`;
+}
+
+/* ---- ライブラリスワップ: 迷子タブ（🧭） ---- */
+function swapStrayRowHtml(entry: SwapStrayEntry): string {
+  return `<div class="stray-row">
+    <div style="flex:1; min-width:0;">
+      <div class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</div>
+      <div class="stray-reason">${escapeHtml(entry.reason)}</div>
+    </div>
+    <button class="ghost-btn" data-jump="${entry.id}">${JUMP_ICON}ジャンプ</button>
+  </div>`;
+}
+
+function renderSwapStray(): void {
+  const byName = swapStrayEntries.filter((e) => e.category === "name");
+  const byVariant = swapStrayEntries.filter((e) => e.category === "variant");
+  const byOther = swapStrayEntries.filter((e) => e.category === "other");
+  let html = "";
+  if (byName.length) {
+    html += `<div class="stray-group-head">名前が一致しません (${byName.length})</div>`;
+    html += byName.map(swapStrayRowHtml).join("");
+  }
+  if (byVariant.length) {
+    html += `<div class="stray-group-head">バリアントの組み合わせが一致しません (${byVariant.length})</div>`;
+    html += byVariant.map(swapStrayRowHtml).join("");
+  }
+  if (byOther.length) {
+    html += `<div class="stray-group-head">その他 (${byOther.length})</div>`;
+    html += byOther.map(swapStrayRowHtml).join("");
+  }
+  $("swapStrayList").innerHTML = html || '<div class="empty-state">迷子の項目はありません</div>';
+}
+
+function swapEmptyState(kind: "clean" | "diff"): string {
+  if (swapScanning) return '<div class="empty-state"><span class="spinner sm"></span>確認中…</div>';
+  return `<div class="empty-state">${kind === "clean" ? "見た目差分なしの項目はありません" : "見た目差分ありの項目はありません"}</div>`;
+}
+
+function renderSwapTabs(justEnteredId?: string): void {
+  $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
+  $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
+  $("swapStrayCount").textContent = `(${swapStrayEntries.length})`;
+
+  $("swapCleanList").innerHTML = swapCleanIds.length
+    ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
+    : swapEmptyState("clean");
+
+  $("swapDiffList").innerHTML = swapDiffIds.length
+    ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("")
+    : swapEmptyState("diff");
+
+  renderSwapStray();
+
+  wireSwapRowEvents();
+  updateSwapFooterButtons();
+}
+
+function wireSwapRowEvents(): void {
+  document.querySelectorAll<HTMLDetailsElement>("#swapResultView .row").forEach((details) => {
+    details.addEventListener("toggle", () => {
+      const id = details.getAttribute("data-id");
+      if (id) swapExpandedIds[id] = details.open;
+    });
+  });
+  document.querySelectorAll<HTMLInputElement>("#swapResultView .row-check").forEach((cb) => {
+    cb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleSwapCheckboxClick(cb, e as MouseEvent);
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-jump]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      post({ type: "jump", id: btn.getAttribute("data-jump") });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-individual-update]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.textContent = "スワップ中…";
+      post({ type: "apply", id: btn.getAttribute("data-swap-individual-update") });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-individual-force]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute("data-swap-individual-force")!;
+      openForceConfirm({ kind: "single", id, btn, mode: "swap" });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-place-latest]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.textContent = "配置中…";
+      post({ type: "place-latest", id: btn.getAttribute("data-swap-place-latest") });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-toggle-latest]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      post({ type: "toggle-latest", id: btn.getAttribute("data-swap-toggle-latest") });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-remove-latest]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      post({ type: "remove-latest", id: btn.getAttribute("data-swap-remove-latest") });
+    });
+  });
+}
+
+/* ---- ライブラリスワップ: チェックボックス（Shift範囲選択） ---- */
+function handleSwapCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
+  const id = cb.getAttribute("data-id")!;
+  const tab: "clean" | "diff" = swapCleanIds.includes(id) ? "clean" : "diff";
+  const list = tab === "clean" ? swapCleanIds : swapDiffIds;
+  const index = list.indexOf(id);
+  const newState = cb.checked;
+
+  if (e.shiftKey && swapLastClickedIndex && swapLastClickedIndex.tab === tab) {
+    const from = Math.min(swapLastClickedIndex.index, index);
+    const to = Math.max(swapLastClickedIndex.index, index);
+    for (let i = from; i <= to; i++) swapChecked[list[i]] = newState;
+    renderSwapTabs();
+  } else {
+    swapChecked[id] = newState;
+    updateSwapFooterButtons();
+  }
+  swapLastClickedIndex = { tab, index };
+}
+
+/* ---- ライブラリスワップ: すべて選択・すべて解除・すべて展開・すべて折りたたむ ---- */
+function bindSwapListToolbar(tab: "clean" | "diff"): void {
+  const list = tab === "clean" ? (): string[] => swapCleanIds : (): string[] => swapDiffIds;
+  const prefix = tab === "clean" ? "swapClean" : "swapDiff";
+  $(`${prefix}SelectAll`).addEventListener("click", () => {
+    list().forEach((id) => (swapChecked[id] = true));
+    renderSwapTabs();
+  });
+  $(`${prefix}SelectNone`).addEventListener("click", () => {
+    list().forEach((id) => (swapChecked[id] = false));
+    renderSwapTabs();
+  });
+  $(`${prefix}ExpandAll`).addEventListener("click", () => {
+    list().forEach((id) => (swapExpandedIds[id] = true));
+    renderSwapTabs();
+  });
+  $(`${prefix}CollapseAll`).addEventListener("click", () => {
+    list().forEach((id) => (swapExpandedIds[id] = false));
+    renderSwapTabs();
+  });
+}
+bindSwapListToolbar("clean");
+bindSwapListToolbar("diff");
+
+function updateSwapFooterButtons(): void {
+  const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
+  $("swapBulkBtnLabel").textContent = `一括スワップ（${cleanChecked}件）`;
+  ($("swapBulkBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
+
+  const placeableChecked = swapDiffIds.filter(
+    (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
+  ).length;
+  $("swapPlaceBulkBtnLabel").textContent = `比較用インスタンスを一括配置（${placeableChecked}件）`;
+  ($("swapPlaceBulkBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
+
+  // 更新フロー側と同じ全件スイープのmarkerCountを共有して使う（比較用インスタンスの
+  // 削除は出所を問わない全件掃除のため。§code.ts参照）。
+  $("swapClearAllBtnLabel").textContent = `比較用インスタンスをすべて削除（${markerCount}件）`;
+  ($("swapClearAllBtn") as HTMLButtonElement).disabled = markerCount === 0;
+
+  const forceChecked = swapDiffIds.filter((id) => swapChecked[id]).length;
+  $("swapForceBulkBtnLabel").textContent = `このまま一括スワップ（${forceChecked}件）`;
+  ($("swapForceBulkBtn") as HTMLButtonElement).disabled = forceChecked === 0;
+}
+
+/* ---- ライブラリスワップ: 一括スワップ / 比較用インスタンスを一括配置 / このまま一括スワップ ---- */
+function showSwapBulkBusy(label: string): void {
+  showSwap("busy");
+  $("swapBulkBusyLabel").textContent = label;
+  $("swapBulkBusyStep").textContent = "";
+  ($("swapBulkBusyProgress").style as CSSStyleDeclaration).width = "0%";
+}
+
+function onSwapBulkProgress(label: string, name: string, index: number, total: number): void {
+  $("swapBulkBusyLabel").textContent = label;
+  $("swapBulkBusyStep").textContent = `${name} (${index} / ${total})`;
+  ($("swapBulkBusyProgress").style as CSSStyleDeclaration).width = `${Math.round((index / total) * 100)}%`;
+}
+
+$("swapBulkBtn").addEventListener("click", () => {
+  const targets = swapCleanIds.filter((id) => swapChecked[id]);
+  if (targets.length === 0) return;
+  showSwapBulkBusy("スワップしています");
+  post({ type: "apply-bulk", ids: targets });
+});
+
+$("swapPlaceBulkBtn").addEventListener("click", () => {
+  const targets = swapDiffIds.filter(
+    (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
+  );
+  if (targets.length === 0) return;
+  showSwapBulkBusy("比較用インスタンスを配置しています");
+  post({ type: "place-latest-bulk", ids: targets });
+});
+
+$("swapClearAllBtn").addEventListener("click", () => {
+  post({ type: "clear-markers" });
+});
+
+$("swapForceBulkBtn").addEventListener("click", () => {
+  const targets = swapDiffIds.filter((id) => swapChecked[id]);
+  if (targets.length === 0) return;
+  openForceConfirm({ kind: "bulk", ids: targets, mode: "swap" });
+});
+
+function removeSwapResolvedId(id: string): void {
+  swapCleanIds = swapCleanIds.filter((x) => x !== id);
+  swapDiffIds = swapDiffIds.filter((x) => x !== id);
+  swapRows.delete(id);
+  delete swapChecked[id];
+  delete swapLatestVisible[id];
+  delete swapExpandedIds[id];
+}
+
+function onSwapApplied(id: string): void {
+  const row = swapRows.get(id);
+  removeSwapResolvedId(id);
+  renderSwapTabs();
+  showToast(`「${row?.name ?? id}」をスワップしました`);
+}
+
+function onSwapApplyBulkDone(ids: string[]): void {
+  ids.forEach(removeSwapResolvedId);
+  renderSwapTabs();
+  showSwap("result");
+  showToast(`${ids.length}件をスワップしました`);
+}
+
+function onSwapLatestPlaced(id: string): void {
+  const row = swapRows.get(id);
+  swapLatestVisible[id] = true;
+  renderSwapTabs();
+  showToast(`「${row?.name ?? id}」に比較用インスタンスを配置しました`);
+}
+
+function onSwapLatestPlacedBulk(ids: string[]): void {
+  ids.forEach((id) => {
+    swapLatestVisible[id] = true;
+  });
+  renderSwapTabs();
+  showSwap("result");
+  showToast(`${ids.length}件に比較用インスタンスを配置しました`);
+}
+
+function onSwapLatestToggled(id: string, visible: boolean): void {
+  swapLatestVisible[id] = visible;
+  renderSwapTabs();
+}
+
+function onSwapLatestRemoved(id: string): void {
+  const row = swapRows.get(id);
+  delete swapLatestVisible[id];
+  renderSwapTabs();
+  showToast(`「${row?.name ?? id}」に比較用インスタンスを削除しました`);
+}
+
 /* ---- メッセージルーティング ---- */
 window.onmessage = (event: MessageEvent) => {
   const msg = event.data?.pluginMessage;
@@ -914,6 +1399,45 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "library-scan-done":
       onLibraryScanDone(msg.data);
+      break;
+    case "swap-scan-started":
+      onSwapScanStarted(msg.total);
+      break;
+    case "swap-scan-item-excluded":
+      onSwapScanExcluded({ id: msg.id, name: msg.name, reason: msg.reason, category: msg.category });
+      break;
+    case "swap-scan-item-result":
+      void onSwapScanItemResult(msg);
+      break;
+    case "swap-scan-done":
+      onSwapScanFinished(false);
+      break;
+    case "swap-scan-cancelled":
+      onSwapScanFinished(true);
+      break;
+    case "swap-applied":
+      onSwapApplied(msg.id);
+      break;
+    case "swap-apply-bulk-progress":
+      onSwapBulkProgress("スワップしています", msg.name, msg.index, msg.total);
+      break;
+    case "swap-apply-bulk-done":
+      onSwapApplyBulkDone(msg.ids);
+      break;
+    case "swap-latest-placed":
+      onSwapLatestPlaced(msg.id);
+      break;
+    case "swap-place-latest-bulk-progress":
+      onSwapBulkProgress("比較用インスタンスを配置しています", msg.name, msg.index, msg.total);
+      break;
+    case "swap-place-latest-bulk-done":
+      onSwapLatestPlacedBulk(msg.ids);
+      break;
+    case "swap-latest-toggled":
+      onSwapLatestToggled(msg.id, msg.visible);
+      break;
+    case "swap-latest-removed":
+      onSwapLatestRemoved(msg.id);
       break;
     case "error":
       showToast(`エラー: ${msg.message}`);

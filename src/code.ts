@@ -19,9 +19,18 @@ figma.showUI(__html__, { width: 420, height: 660 });
 
 type ScopeMode = "selection" | "page" | "all";
 
+// "update"=コンポーネント更新（同一キーの最新publish版）、"swap"=ライブラリ
+// スワップ（貼り付けられた対応表から名前/バリアントで解決した別ライブラリの
+// コンポーネント）。store/wrapperStoreは両モードで共有する（同じキャンバス上の
+// 話なので、比較用インスタンスの一括削除等は出所を問わず全件対象にしたい）。
+// sourceは、apply/配置系のハンドラがui.ts側にどちらのモード向けメッセージを
+// 送るか判定するためだけに使う。
+type StoreSource = "update" | "swap";
+
 interface StoredItem {
   instance: InstanceNode;
   latestComponent: ComponentNode;
+  source: StoreSource;
 }
 
 const store = new Map<string, StoredItem>();
@@ -30,6 +39,7 @@ const store = new Map<string, StoredItem>();
 // so a resolved row never leaves a redundant overlay behind.
 const wrapperStore = new Map<string, FrameNode>();
 let scanCancelled = false;
+let swapScanCancelled = false;
 
 function post(msg: Record<string, unknown>): void {
   figma.ui.postMessage(msg);
@@ -149,8 +159,8 @@ async function runScan(scope: ScopeMode): Promise<void> {
 
       if (scanCancelled) break;
 
-      store.set(inst.id, { instance: inst, latestComponent: latest });
-      await computeAndSendDiff(inst, latest);
+      store.set(inst.id, { instance: inst, latestComponent: latest, source: "update" });
+      await computeAndSendDiff(inst, latest, "scan-item-result");
     } catch {
       // The instance (or its parent) was likely deleted/moved by the user
       // while this scan was mid-flight. Skip it and keep going rather than
@@ -166,7 +176,7 @@ async function runScan(scope: ScopeMode): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Promise<void> {
+async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, resultType: string): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
@@ -201,7 +211,7 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
     // for that case.
     const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
     post({
-      type: "scan-item-result",
+      type: resultType,
       id: inst.id,
       name: inst.name,
       sizeChanged,
@@ -251,16 +261,26 @@ async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): 
   item.instance.swapComponent(item.latestComponent);
   if (removeLatest !== false) cleanupWrapper(id);
   figma.commitUndo();
-  post({ type: "applied", id });
+  post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
 async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<void> {
   const succeeded: string[] = [];
+  // 一括操作は必ず1つのモードのチェック済み行から来るので、先頭のsourceで
+  // 完了メッセージの種別を決めて問題ない（進捗メッセージは念のため毎回そのitem
+  // 自身のsourceを見る）。
+  let bulkSource: StoreSource = "update";
   for (let i = 0; i < ids.length; i++) {
     const item = store.get(ids[i]);
     if (!item) continue;
-    post({ type: "apply-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
+    bulkSource = item.source;
+    post({
+      type: item.source === "swap" ? "swap-apply-bulk-progress" : "apply-bulk-progress",
+      name: item.instance.name,
+      index: i + 1,
+      total: ids.length,
+    });
     try {
       item.instance.swapComponent(item.latestComponent);
       if (removeLatest !== false) cleanupWrapper(ids[i]);
@@ -270,7 +290,7 @@ async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<v
     }
   }
   figma.commitUndo();
-  post({ type: "apply-bulk-done", ids: succeeded });
+  post({ type: bulkSource === "swap" ? "swap-apply-bulk-done" : "apply-bulk-done", ids: succeeded });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
@@ -330,19 +350,28 @@ async function handlePlaceLatest(id: string): Promise<void> {
     return;
   }
   figma.commitUndo();
-  post({ type: "latest-placed", id });
+  post({ type: item?.source === "swap" ? "swap-latest-placed" : "latest-placed", id });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
 async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
   const succeeded: string[] = [];
+  let bulkSource: StoreSource = "update";
   for (let i = 0; i < ids.length; i++) {
     const item = store.get(ids[i]);
-    if (item) post({ type: "place-latest-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
+    if (item) {
+      bulkSource = item.source;
+      post({
+        type: item.source === "swap" ? "swap-place-latest-bulk-progress" : "place-latest-bulk-progress",
+        name: item.instance.name,
+        index: i + 1,
+        total: ids.length,
+      });
+    }
     if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
   }
   figma.commitUndo();
-  post({ type: "place-latest-bulk-done", ids: succeeded });
+  post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
@@ -356,9 +385,10 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
 
 async function handleRemoveLatest(id: string): Promise<void> {
   if (!wrapperStore.has(id)) return;
+  const source = store.get(id)?.source;
   cleanupWrapper(id);
   figma.commitUndo();
-  post({ type: "latest-removed", id });
+  post({ type: source === "swap" ? "swap-latest-removed" : "latest-removed", id });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
@@ -370,7 +400,8 @@ function handleToggleLatest(id: string): void {
   }
   wrapper.visible = !wrapper.visible;
   figma.commitUndo();
-  post({ type: "latest-toggled", id, visible: wrapper.visible });
+  const source = store.get(id)?.source;
+  post({ type: source === "swap" ? "swap-latest-toggled" : "latest-toggled", id, visible: wrapper.visible });
 }
 
 async function handleClearMarkers(): Promise<void> {
@@ -499,6 +530,140 @@ async function handleScanLibrary(): Promise<void> {
   post({ type: "library-scan-done", data });
 }
 
+// ---- ライブラリスワップ（貼り付けられた対応表との名前/バリアントマッチング） ----
+//
+// Figma純正の「Swap library」機能は名前のみでコンポーネント/スタイルを
+// マッチングし、見つからなければそのまま元のライブラリに繋がったまま残す
+// （help.figma.comで確認済み）。ここでもそれに倣い、名前一致（＋バリアント
+// セットの場合はプロパティの組み合わせ一致）だけで解決し、一致しないものは
+// 一切書き換えず「迷子」として除外する。
+
+type SwapMatchResult = { key: string } | { reason: string; category: "name" | "variant" };
+
+function variantPropsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => a[k] === b[k]);
+}
+
+function resolveSwapTarget(
+  matchName: string,
+  isSet: boolean,
+  currentVariantProperties: Record<string, string> | null,
+  nameToComponent: Map<string, LibraryComponentEntry>,
+  nameToSet: Map<string, LibraryComponentSetEntry>
+): SwapMatchResult {
+  if (isSet) {
+    const set = nameToSet.get(matchName);
+    if (!set) {
+      return { reason: `「${matchName}」という名前のコンポーネントセットが新ライブラリに見つかりません`, category: "name" };
+    }
+    const current = currentVariantProperties ?? {};
+    const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
+    if (!child) {
+      const desc = Object.entries(current)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ");
+      return {
+        reason: `「${matchName}」は見つかりましたが、バリアントの組み合わせ（${desc}）が新ライブラリにありません`,
+        category: "variant",
+      };
+    }
+    return { key: child.key };
+  }
+  const comp = nameToComponent.get(matchName);
+  if (!comp) {
+    return { reason: `「${matchName}」という名前のコンポーネントが新ライブラリに見つかりません`, category: "name" };
+  }
+  return { key: comp.key };
+}
+
+async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promise<void> {
+  swapScanCancelled = false;
+
+  const nameToComponent = new Map<string, LibraryComponentEntry>();
+  for (const c of mapping.components) nameToComponent.set(c.name, c);
+  const nameToSet = new Map<string, LibraryComponentSetEntry>();
+  for (const s of mapping.componentSets) nameToSet.set(s.name, s);
+
+  const targets = await collectTargets(scope);
+  post({ type: "swap-scan-started", total: targets.length });
+
+  for (const inst of targets) {
+    if (swapScanCancelled) break;
+
+    try {
+      let main: ComponentNode | null;
+      try {
+        main = await inst.getMainComponentAsync();
+      } catch {
+        main = null;
+      }
+
+      if (!main) {
+        post({
+          type: "swap-scan-item-excluded",
+          id: inst.id,
+          name: inst.name,
+          reason: "未パブリッシュのローカルコンポーネント",
+          category: "other",
+        });
+        continue;
+      }
+
+      const parent = main.parent;
+      const isSet = parent !== null && parent.type === "COMPONENT_SET";
+      const matchName = isSet ? (parent as ComponentSetNode).name : main.name;
+
+      const result = resolveSwapTarget(matchName, isSet, inst.variantProperties, nameToComponent, nameToSet);
+      if ("reason" in result) {
+        post({
+          type: "swap-scan-item-excluded",
+          id: inst.id,
+          name: inst.name,
+          reason: result.reason,
+          category: result.category,
+        });
+        continue;
+      }
+
+      let target: ComponentNode;
+      try {
+        target = await figma.importComponentByKeyAsync(result.key);
+      } catch {
+        post({
+          type: "swap-scan-item-excluded",
+          id: inst.id,
+          name: inst.name,
+          reason: "対応するコンポーネントの取得に失敗しました",
+          category: "other",
+        });
+        continue;
+      }
+
+      if (swapScanCancelled) break;
+
+      store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
+      await computeAndSendDiff(inst, target, "swap-scan-item-result");
+    } catch {
+      store.delete(inst.id);
+      post({
+        type: "swap-scan-item-excluded",
+        id: inst.id,
+        name: inst.name,
+        reason: "比較中にエラーが発生しました（編集された可能性があります）",
+        category: "other",
+      });
+    }
+
+    figma.commitUndo();
+  }
+
+  post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
+  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+}
+
 // ---- キャンバスでジャンプ -----------------------------------------------
 
 function findOwningPage(node: BaseNode): PageNode | null {
@@ -514,10 +679,14 @@ function jumpToNode(node: SceneNode): void {
   figma.viewport.scrollAndZoomIntoView([node]);
 }
 
-function handleJump(id: string): void {
-  const item = store.get(id);
-  if (!item) return;
-  jumpToNode(item.instance);
+// storeに載っていない（＝マッチしなかった「迷子」）インスタンスにもジャンプできる
+// よう、storeを経由せずノードIDから直接引く。マッチ済みのインスタンスに対しても
+// 同じように動く（storeに入っているinstanceと同一ノードを指すため）。
+async function handleJump(id: string): Promise<void> {
+  const node = await figma.getNodeByIdAsync(id);
+  if (!node || !("type" in node)) return;
+  if (node.type === "DOCUMENT" || node.type === "PAGE") return;
+  jumpToNode(node as SceneNode);
 }
 
 // ---- メッセージルーティング ---------------------------------------------
@@ -529,6 +698,7 @@ interface IncomingMessage {
   ids?: string[];
   jump?: boolean;
   removeLatest?: boolean;
+  mapping?: LibraryScanData;
 }
 
 figma.ui.onmessage = async (msg: IncomingMessage) => {
@@ -559,13 +729,19 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         if (msg.id) await handleRemoveLatest(msg.id);
         break;
       case "jump":
-        if (msg.id) handleJump(msg.id);
+        if (msg.id) await handleJump(msg.id);
         break;
       case "clear-markers":
         await handleClearMarkers();
         break;
       case "scan-library":
         await handleScanLibrary();
+        break;
+      case "scan-swap":
+        if (msg.scope && msg.mapping) await handleScanSwap(msg.scope, msg.mapping);
+        break;
+      case "cancel-swap-scan":
+        swapScanCancelled = true;
         break;
     }
   } catch (err) {

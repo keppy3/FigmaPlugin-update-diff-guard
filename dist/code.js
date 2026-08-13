@@ -5,6 +5,7 @@
   var store = /* @__PURE__ */ new Map();
   var wrapperStore = /* @__PURE__ */ new Map();
   var scanCancelled = false;
+  var swapScanCancelled = false;
   function post(msg) {
     figma.ui.postMessage(msg);
   }
@@ -93,8 +94,8 @@
           continue;
         }
         if (scanCancelled) break;
-        store.set(inst.id, { instance: inst, latestComponent: latest });
-        await computeAndSendDiff(inst, latest);
+        store.set(inst.id, { instance: inst, latestComponent: latest, source: "update" });
+        await computeAndSendDiff(inst, latest, "scan-item-result");
       } catch (e) {
         store.delete(inst.id);
         post({ type: "scan-item-excluded", name: inst.name, reason: "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09" });
@@ -104,7 +105,7 @@
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  async function computeAndSendDiff(inst, latest) {
+  async function computeAndSendDiff(inst, latest, resultType) {
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
@@ -119,7 +120,7 @@
     try {
       const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
       post({
-        type: "scan-item-result",
+        type: resultType,
         id: inst.id,
         name: inst.name,
         sizeChanged,
@@ -147,15 +148,22 @@
     item.instance.swapComponent(item.latestComponent);
     if (removeLatest !== false) cleanupWrapper(id);
     figma.commitUndo();
-    post({ type: "applied", id });
+    post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function handleApplyBulk(ids, removeLatest) {
     const succeeded = [];
+    let bulkSource = "update";
     for (let i = 0; i < ids.length; i++) {
       const item = store.get(ids[i]);
       if (!item) continue;
-      post({ type: "apply-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
+      bulkSource = item.source;
+      post({
+        type: item.source === "swap" ? "swap-apply-bulk-progress" : "apply-bulk-progress",
+        name: item.instance.name,
+        index: i + 1,
+        total: ids.length
+      });
       try {
         item.instance.swapComponent(item.latestComponent);
         if (removeLatest !== false) cleanupWrapper(ids[i]);
@@ -165,7 +173,7 @@
       }
     }
     figma.commitUndo();
-    post({ type: "apply-bulk-done", ids: succeeded });
+    post({ type: bulkSource === "swap" ? "swap-apply-bulk-done" : "apply-bulk-done", ids: succeeded });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function placeLatestOne(id) {
@@ -206,28 +214,40 @@
       return;
     }
     figma.commitUndo();
-    post({ type: "latest-placed", id });
+    post({ type: (item == null ? void 0 : item.source) === "swap" ? "swap-latest-placed" : "latest-placed", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function handlePlaceLatestBulk(ids) {
     const succeeded = [];
+    let bulkSource = "update";
     for (let i = 0; i < ids.length; i++) {
       const item = store.get(ids[i]);
-      if (item) post({ type: "place-latest-bulk-progress", name: item.instance.name, index: i + 1, total: ids.length });
+      if (item) {
+        bulkSource = item.source;
+        post({
+          type: item.source === "swap" ? "swap-place-latest-bulk-progress" : "place-latest-bulk-progress",
+          name: item.instance.name,
+          index: i + 1,
+          total: ids.length
+        });
+      }
       if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
     }
     figma.commitUndo();
-    post({ type: "place-latest-bulk-done", ids: succeeded });
+    post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function handleRemoveLatest(id) {
+    var _a;
     if (!wrapperStore.has(id)) return;
+    const source = (_a = store.get(id)) == null ? void 0 : _a.source;
     cleanupWrapper(id);
     figma.commitUndo();
-    post({ type: "latest-removed", id });
+    post({ type: source === "swap" ? "swap-latest-removed" : "latest-removed", id });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   function handleToggleLatest(id) {
+    var _a;
     const wrapper = wrapperStore.get(id);
     if (!wrapper) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
@@ -235,7 +255,8 @@
     }
     wrapper.visible = !wrapper.visible;
     figma.commitUndo();
-    post({ type: "latest-toggled", id, visible: wrapper.visible });
+    const source = (_a = store.get(id)) == null ? void 0 : _a.source;
+    post({ type: source === "swap" ? "swap-latest-toggled" : "latest-toggled", id, visible: wrapper.visible });
   }
   async function handleClearMarkers() {
     const nodes = await findAllTaggedNodes();
@@ -308,6 +329,107 @@
     };
     post({ type: "library-scan-done", data });
   }
+  function variantPropsEqual(a, b) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    return aKeys.every((k) => a[k] === b[k]);
+  }
+  function resolveSwapTarget(matchName, isSet, currentVariantProperties, nameToComponent, nameToSet) {
+    if (isSet) {
+      const set = nameToSet.get(matchName);
+      if (!set) {
+        return { reason: `\u300C${matchName}\u300D\u3068\u3044\u3046\u540D\u524D\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30BB\u30C3\u30C8\u304C\u65B0\u30E9\u30A4\u30D6\u30E9\u30EA\u306B\u898B\u3064\u304B\u308A\u307E\u305B\u3093`, category: "name" };
+      }
+      const current = currentVariantProperties != null ? currentVariantProperties : {};
+      const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
+      if (!child) {
+        const desc = Object.entries(current).map(([k, v]) => `${k}=${v}`).join(", ");
+        return {
+          reason: `\u300C${matchName}\u300D\u306F\u898B\u3064\u304B\u308A\u307E\u3057\u305F\u304C\u3001\u30D0\u30EA\u30A2\u30F3\u30C8\u306E\u7D44\u307F\u5408\u308F\u305B\uFF08${desc}\uFF09\u304C\u65B0\u30E9\u30A4\u30D6\u30E9\u30EA\u306B\u3042\u308A\u307E\u305B\u3093`,
+          category: "variant"
+        };
+      }
+      return { key: child.key };
+    }
+    const comp = nameToComponent.get(matchName);
+    if (!comp) {
+      return { reason: `\u300C${matchName}\u300D\u3068\u3044\u3046\u540D\u524D\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u304C\u65B0\u30E9\u30A4\u30D6\u30E9\u30EA\u306B\u898B\u3064\u304B\u308A\u307E\u305B\u3093`, category: "name" };
+    }
+    return { key: comp.key };
+  }
+  async function handleScanSwap(scope, mapping) {
+    swapScanCancelled = false;
+    const nameToComponent = /* @__PURE__ */ new Map();
+    for (const c of mapping.components) nameToComponent.set(c.name, c);
+    const nameToSet = /* @__PURE__ */ new Map();
+    for (const s of mapping.componentSets) nameToSet.set(s.name, s);
+    const targets = await collectTargets(scope);
+    post({ type: "swap-scan-started", total: targets.length });
+    for (const inst of targets) {
+      if (swapScanCancelled) break;
+      try {
+        let main;
+        try {
+          main = await inst.getMainComponentAsync();
+        } catch (e) {
+          main = null;
+        }
+        if (!main) {
+          post({
+            type: "swap-scan-item-excluded",
+            id: inst.id,
+            name: inst.name,
+            reason: "\u672A\u30D1\u30D6\u30EA\u30C3\u30B7\u30E5\u306E\u30ED\u30FC\u30AB\u30EB\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8",
+            category: "other"
+          });
+          continue;
+        }
+        const parent = main.parent;
+        const isSet = parent !== null && parent.type === "COMPONENT_SET";
+        const matchName = isSet ? parent.name : main.name;
+        const result = resolveSwapTarget(matchName, isSet, inst.variantProperties, nameToComponent, nameToSet);
+        if ("reason" in result) {
+          post({
+            type: "swap-scan-item-excluded",
+            id: inst.id,
+            name: inst.name,
+            reason: result.reason,
+            category: result.category
+          });
+          continue;
+        }
+        let target;
+        try {
+          target = await figma.importComponentByKeyAsync(result.key);
+        } catch (e) {
+          post({
+            type: "swap-scan-item-excluded",
+            id: inst.id,
+            name: inst.name,
+            reason: "\u5BFE\u5FDC\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557\u3057\u307E\u3057\u305F",
+            category: "other"
+          });
+          continue;
+        }
+        if (swapScanCancelled) break;
+        store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
+        await computeAndSendDiff(inst, target, "swap-scan-item-result");
+      } catch (e) {
+        store.delete(inst.id);
+        post({
+          type: "swap-scan-item-excluded",
+          id: inst.id,
+          name: inst.name,
+          reason: "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09",
+          category: "other"
+        });
+      }
+      figma.commitUndo();
+    }
+    post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
+    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  }
   function findOwningPage(node) {
     let p = node;
     while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
@@ -319,10 +441,11 @@
     figma.currentPage.selection = [node];
     figma.viewport.scrollAndZoomIntoView([node]);
   }
-  function handleJump(id) {
-    const item = store.get(id);
-    if (!item) return;
-    jumpToNode(item.instance);
+  async function handleJump(id) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node || !("type" in node)) return;
+    if (node.type === "DOCUMENT" || node.type === "PAGE") return;
+    jumpToNode(node);
   }
   figma.ui.onmessage = async (msg) => {
     try {
@@ -352,13 +475,19 @@
           if (msg.id) await handleRemoveLatest(msg.id);
           break;
         case "jump":
-          if (msg.id) handleJump(msg.id);
+          if (msg.id) await handleJump(msg.id);
           break;
         case "clear-markers":
           await handleClearMarkers();
           break;
         case "scan-library":
           await handleScanLibrary();
+          break;
+        case "scan-swap":
+          if (msg.scope && msg.mapping) await handleScanSwap(msg.scope, msg.mapping);
+          break;
+        case "cancel-swap-scan":
+          swapScanCancelled = true;
           break;
       }
     } catch (err) {

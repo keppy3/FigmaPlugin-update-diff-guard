@@ -287,6 +287,20 @@
   textarea.paste-area:hover { border-color: var(--accent); }
   .paste-status { font-size: 10.5px; font-weight: 600; min-height: 14px; margin-top: -4px; }
   .paste-status.error { color: var(--danger); }
+
+  /* ---- 迷子タブ（🧭）---- */
+  .stray-group-head {
+    padding: 9px 14px 5px; font-size: 10.5px; font-weight: 700; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px; background: var(--row-hover);
+  }
+  .stray-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 37px; border-bottom: 1px solid var(--divider); }
+  .stray-row .row-name { font-size: 11.5px; }
+  .stray-reason { font-size: 10px; color: var(--text-faint); }
+  .annotation-note {
+    display: flex; align-items: flex-start; gap: 7px; padding: 10px 14px; font-size: 10px; color: var(--text-muted);
+    background: var(--chrome-bg); border-top: 1px solid var(--panel-border); line-height: 1.6;
+  }
+  .annotation-note svg { width: 12px; height: 12px; flex: none; margin-top: 1px; color: var(--accent-strong); }
 </style>
 </head>
 <body>
@@ -414,6 +428,79 @@
         </div>
         <button class="btn-big" id="swapScanBtn" disabled>スキャン</button>
         <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
+      </div>
+
+      <!-- 一括「スワップ」／一括「比較用インスタンスを配置」／一括「このままスワップ」実行時のみのビジー画面 -->
+      <div class="busy hidden" id="swapBulkBusyView">
+        <div class="spinner"></div>
+        <div class="busy-label" id="swapBulkBusyLabel">スワップしています</div>
+        <div class="busy-step" id="swapBulkBusyStep"></div>
+        <div class="progress-track"><div class="progress-fill" id="swapBulkBusyProgress"></div></div>
+      </div>
+
+      <!-- スキャン結果リスト -->
+      <div class="hidden" id="swapResultView">
+
+        <div class="scan-progress hidden" id="swapScanProgressStrip">
+          <div class="scan-progress-row">
+            <span class="spinner sm"></span>
+            <span id="swapScanProgressText">確認中… 0 / 0</span>
+            <button class="scan-cancel-btn" id="swapCancelScanBtn">キャンセル</button>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="swapScanProgressFill"></div></div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-swaptab="clean">✅️ 見た目差分なし <span class="tab-count" id="swapCleanCount">(0)</span></button>
+          <button class="tab" data-swaptab="diff">⚠️ 見た目差分あり <span class="tab-count" id="swapDiffCount">(0)</span></button>
+          <button class="tab" data-swaptab="stray">🧭 迷子 <span class="tab-count" id="swapStrayCount">(0)</span></button>
+        </div>
+
+        <div class="tab-panel" data-swappanel="clean">
+          <div class="list-toolbar">
+            <button class="list-toolbar-link" id="swapCleanSelectAll">すべて選択</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapCleanSelectNone">すべて解除</button>
+            <button class="list-toolbar-link push-right" id="swapCleanExpandAll">すべて展開</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapCleanCollapseAll">すべて折りたたむ</button>
+          </div>
+          <div class="row-list" id="swapCleanList"></div>
+          <div class="tab-footer">
+            <div class="tab-footer-actions">
+              <button class="btn-big" id="swapBulkBtn"><span id="swapBulkBtnLabel">一括スワップ（0件）</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" data-swappanel="diff">
+          <div class="list-toolbar">
+            <button class="list-toolbar-link" id="swapDiffSelectAll">すべて選択</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapDiffSelectNone">すべて解除</button>
+            <button class="list-toolbar-link push-right" id="swapDiffExpandAll">すべて展開</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapDiffCollapseAll">すべて折りたたむ</button>
+          </div>
+          <div class="row-list" id="swapDiffList"></div>
+          <div class="tab-footer">
+            <div class="tab-footer-actions">
+              <button class="btn-big" id="swapForceBulkBtn"><span id="swapForceBulkBtnLabel">このまま一括スワップ（0件）</span></button>
+              <div class="btn-pair">
+                <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
+                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" data-swappanel="stray">
+          <div class="row-list" id="swapStrayList"></div>
+          <div class="annotation-note">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+            <span>これらのインスタンスは、名前またはバリアントの組み合わせが新ライブラリと一致しないため対象外です。手動でのスワップ対応にご利用ください。</span>
+          </div>
+        </div>
       </div>
     </div>
 
