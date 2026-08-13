@@ -1,6 +1,6 @@
 {
   "name": "update-diff-guard",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Figma plugin: detect visual diffs before/after a component library update, without breaking connectors that reference the instance node.",
   "scripts": {
