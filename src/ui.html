@@ -119,11 +119,11 @@
   .btn-big.outline-danger { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
   .btn-big.outline-danger:hover { background: var(--danger-bg); }
   .btn-big.outline-danger[disabled] { opacity: 0.4; border-color: var(--text-faint); color: var(--text-faint); background: transparent; }
-  /* 一括「Latestを重ねて配置」／「Latestを削除」を横並びにする組（フル幅ボタン2つを分け合う） */
+  /* 一括「最新インスタンスを重ねて配置」／「配置した最新インスタンスをすべて削除」を横並びにする組（フル幅ボタン2つを分け合う） */
   .btn-pair { display: flex; gap: 8px; }
   .btn-pair .btn-big { flex: 1; height: auto; min-height: 40px; padding: 6px 8px; font-size: 11px; line-height: 1.3; white-space: normal; }
 
-  /* ---- Busy (bulk 更新／Latestを重ねて配置／このまま更新 のみ) ---- */
+  /* ---- Busy (bulk 更新／最新インスタンスを重ねて配置／このまま更新 のみ) ---- */
   .busy { padding: 30px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
   .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--divider); border-top-color: var(--accent); animation: spin 0.8s linear infinite; flex: none; }
   .spinner.sm { width: 13px; height: 13px; border-width: 2px; }
@@ -280,7 +280,7 @@
       <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
     </div>
 
-    <!-- 一括「更新」／一括「Latestを重ねて配置」／一括「このまま更新」実行時のみのビジー画面 -->
+    <!-- 一括「更新」／一括「最新インスタンスを重ねて配置」／一括「このまま更新」実行時のみのビジー画面 -->
     <div class="busy hidden" id="busyView">
       <div class="spinner"></div>
       <div class="busy-label" id="busyLabel">更新しています</div>
@@ -336,8 +336,8 @@
           <div class="tab-footer-actions">
             <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括 このまま更新（0件）</span></button>
             <div class="btn-pair">
-              <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括 Latestを重ねて配置（0件）</span></button>
-              <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">Latestをすべて削除（0件）</span></button>
+              <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括 最新インスタンスを重ねて配置（0件）</span></button>
+              <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">配置した最新インスタンスをすべて削除（0件）</span></button>
             </div>
           </div>
         </div>
@@ -354,7 +354,7 @@
       <div class="modal-body" id="confirmBody"></div>
       <label class="modal-checkbox-row hidden" id="confirmRemoveLatestRow">
         <input type="checkbox" id="confirmRemoveLatest" checked>
-        <span>配置中のLatestを削除する</span>
+        <span>配置中の最新インスタンスを削除する</span>
       </label>
       <div class="modal-actions">
         <button class="ghost-btn" id="modalCancel">キャンセル</button>

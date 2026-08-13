@@ -5,10 +5,10 @@
 // user undo can't reach further back than the item in flight), individual
 // + bulk update for 見た目差分なし items (also reused for "このまま更新" on
 // 見た目差分あり items — the write is identical either way), and a
-// per-instance "Latestを重ねて配置" overlay comparison tool (place a
+// per-instance "最新インスタンスを重ねて配置" overlay comparison tool (place a
 // Latest-preview directly on top of Current, toggle it show/hide, or
 // remove it individually) with a pluginData-tagged full-sweep cleanup
-// utility ("Latestをすべて削除").
+// utility ("配置した最新インスタンスをすべて削除").
 //
 // Classification (clean vs diff) happens in ui.ts, not here — this side
 // only ever needs to know "which instance" via id, never "is it clean".
@@ -223,7 +223,7 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode): Pr
 // same code — the write itself doesn't know or care which tab the id came
 // from, only ui.ts's confirmation flow differs. If that row had a
 // Latest-preview wrapper placed on it, whether to also clean it up is the
-// caller's choice (the confirm dialog's "配置中のLatestを削除する"
+// caller's choice (the confirm dialog's "配置中の最新インスタンスを削除する"
 // checkbox) rather than automatic — `removeLatest` defaults to true so
 // the 見た目差分なしタブ's plain apply path (which never has a wrapper
 // to begin with, and never sends this flag) behaves the same as before.
@@ -274,7 +274,7 @@ async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<v
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-// ---- Latestを重ねて配置（見た目差分あり） ------------------------------
+// ---- 最新インスタンスを重ねて配置（見た目差分あり） ------------------------------
 //
 // Places the Latest instance exactly on top of Current (same x/y, next
 // sibling so it renders above), wrapped in a frame that carries a thick
@@ -346,12 +346,12 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-// Individual "Latestを削除" — removes just the named row's wrapper, as
+// Individual "配置した最新インスタンスを削除" — removes just the named row's wrapper, as
 // opposed to handleClearMarkers() which sweeps every tagged node on every
 // page regardless of selection (the bulk footer button now just triggers
-// that same full sweep, labeled "Latestをすべて削除", rather than a
+// that same full sweep, labeled "配置した最新インスタンスをすべて削除", rather than a
 // separate selection-scoped variant — the two used to overlap in purpose).
-// The row reverts to showing the "Latestを重ねて配置" button again (ui.ts
+// The row reverts to showing the "最新インスタンスを重ねて配置" button again (ui.ts
 // infers this from the wrapper's absence, same as after handleClearMarkers).
 
 async function handleRemoveLatest(id: string): Promise<void> {
