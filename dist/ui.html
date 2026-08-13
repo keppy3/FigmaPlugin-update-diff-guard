@@ -119,11 +119,11 @@
   .btn-big.outline-danger { background: transparent; border: 1.5px solid var(--danger); color: var(--danger); }
   .btn-big.outline-danger:hover { background: var(--danger-bg); }
   .btn-big.outline-danger[disabled] { opacity: 0.4; border-color: var(--text-faint); color: var(--text-faint); background: transparent; }
-  /* 一括「最新インスタンスを重ねて配置」／「配置した最新インスタンスをすべて削除」を横並びにする組（フル幅ボタン2つを分け合う） */
+  /* 一括「比較用インスタンスを配置」／「比較用インスタンスをすべて削除」を横並びにする組（フル幅ボタン2つを分け合う） */
   .btn-pair { display: flex; gap: 8px; }
   .btn-pair .btn-big { flex: 1; height: auto; min-height: 40px; padding: 6px 8px; font-size: 11px; line-height: 1.3; white-space: normal; }
 
-  /* ---- Busy (bulk 更新／最新インスタンスを重ねて配置／このまま更新 のみ) ---- */
+  /* ---- Busy (bulk 更新／比較用インスタンスを配置／このまま更新 のみ) ---- */
   .busy { padding: 30px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
   .spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--divider); border-top-color: var(--accent); animation: spin 0.8s linear infinite; flex: none; }
   .spinner.sm { width: 13px; height: 13px; border-width: 2px; }
@@ -280,7 +280,7 @@
       <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
     </div>
 
-    <!-- 一括「更新」／一括「最新インスタンスを重ねて配置」／一括「このまま更新」実行時のみのビジー画面 -->
+    <!-- 一括「更新」／一括「比較用インスタンスを配置」／一括「このまま更新」実行時のみのビジー画面 -->
     <div class="busy hidden" id="busyView">
       <div class="spinner"></div>
       <div class="busy-label" id="busyLabel">更新しています</div>
@@ -317,7 +317,7 @@
         <div class="row-list" id="cleanList"></div>
         <div class="tab-footer">
           <div class="tab-footer-actions">
-            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括 更新（0件）</span></button>
+            <button class="btn-big" id="updateBtn"><span id="updateBtnLabel">一括更新（0件）</span></button>
           </div>
         </div>
       </div>
@@ -334,10 +334,10 @@
         <div class="row-list" id="diffList"></div>
         <div class="tab-footer">
           <div class="tab-footer-actions">
-            <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">一括 このまま更新（0件）</span></button>
+            <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新（0件）</span></button>
             <div class="btn-pair">
-              <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">一括 最新インスタンスを重ねて配置（0件）</span></button>
-              <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">配置した最新インスタンスをすべて削除（0件）</span></button>
+              <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置（0件）</span></button>
+              <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除（0件）</span></button>
             </div>
           </div>
         </div>
@@ -354,7 +354,7 @@
       <div class="modal-body" id="confirmBody"></div>
       <label class="modal-checkbox-row hidden" id="confirmRemoveLatestRow">
         <input type="checkbox" id="confirmRemoveLatest" checked>
-        <span>配置中の最新インスタンスを削除する</span>
+        <span>配置中の比較用インスタンスを削除する</span>
       </label>
       <div class="modal-actions">
         <button class="ghost-btn" id="modalCancel">キャンセル</button>
@@ -809,10 +809,10 @@
     const forceBtn = `<button class="ghost-btn accent" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>`;
     const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
     if (!placed) {
-      return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u91CD\u306D\u3066\u914D\u7F6E</button></div>`;
+      return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E</button></div>`;
     }
     const eyeIcon = latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
-    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">\u914D\u7F6E\u3057\u305F\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}\u8868\u793A/\u975E\u8868\u793A</button></div>`;
+    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}\u8868\u793A/\u975E\u8868\u793A</button></div>`;
   }
   function diffRowHtml(id, justEntered) {
     var _a;
@@ -958,17 +958,17 @@
   bindListToolbar("diff");
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-    $("updateBtnLabel").textContent = `\u4E00\u62EC \u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
+    $("updateBtnLabel").textContent = `\u4E00\u62EC\u66F4\u65B0\uFF08${cleanChecked}\u4EF6\uFF09`;
     $("updateBtn").disabled = cleanChecked === 0;
     const placeableChecked = diffIds.filter(
       (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
     ).length;
-    $("placeLatestBtnLabel").textContent = `\u4E00\u62EC \u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u91CD\u306D\u3066\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
+    $("placeLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E\uFF08${placeableChecked}\u4EF6\uFF09`;
     $("placeLatestBtn").disabled = placeableChecked === 0;
-    $("clearAllLatestBtnLabel").textContent = `\u914D\u7F6E\u3057\u305F\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664\uFF08${markerCount}\u4EF6\uFF09`;
+    $("clearAllLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664\uFF08${markerCount}\u4EF6\uFF09`;
     $("clearAllLatestBtn").disabled = markerCount === 0;
     const forceChecked = diffIds.filter((id) => checked[id]).length;
-    $("forceUpdateBtnLabel").textContent = `\u4E00\u62EC \u3053\u306E\u307E\u307E\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
+    $("forceUpdateBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u66F4\u65B0\uFF08${forceChecked}\u4EF6\uFF09`;
     $("forceUpdateBtn").disabled = forceChecked === 0;
   }
   function showBulkBusy(label) {
@@ -992,7 +992,7 @@
   $("placeLatestBtn").addEventListener("click", () => {
     const targets = diffIds.filter((id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id));
     if (targets.length === 0) return;
-    showBulkBusy("\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059");
+    showBulkBusy("\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059");
     post({ type: "place-latest-bulk", ids: targets });
   });
   $("clearAllLatestBtn").addEventListener("click", () => {
@@ -1030,7 +1030,7 @@
     const row = rows.get(id);
     latestVisible[id] = true;
     renderTabs();
-    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306B\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u307E\u3057\u305F`);
+    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u307E\u3057\u305F`);
   }
   function onLatestPlacedBulk(ids) {
     ids.forEach((id) => {
@@ -1038,7 +1038,7 @@
     });
     renderTabs();
     show("result");
-    showToast(`${ids.length}\u4EF6\u306B\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u91CD\u306D\u3066\u914D\u7F6E\u3057\u307E\u3057\u305F`);
+    showToast(`${ids.length}\u4EF6\u306B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u307E\u3057\u305F`);
     setChromeSub("\u691C\u51FA\u5B8C\u4E86");
   }
   function onLatestToggled(id, visible) {
@@ -1050,12 +1050,12 @@
     const row = rows.get(id);
     delete latestVisible[id];
     renderTabs();
-    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306B\u914D\u7F6E\u3057\u305F\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3057\u307E\u3057\u305F`);
+    showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
   function onMarkersCleared(ids, count) {
     (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
     renderTabs();
-    showToast(`\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\uFF08\u30D7\u30EC\u30D3\u30E5\u30FC\uFF09\u3092${count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
+    showToast(`\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092${count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
   var pendingForce = null;
   function targetHasPlacedLatest(target) {
@@ -1127,7 +1127,7 @@
         onLatestPlaced(msg.id);
         break;
       case "place-latest-bulk-progress":
-        onBulkProgress("\u6700\u65B0\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059", msg.name, msg.index, msg.total);
+        onBulkProgress("\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059", msg.name, msg.index, msg.total);
         break;
       case "place-latest-bulk-done":
         onLatestPlacedBulk(msg.ids);

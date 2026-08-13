@@ -335,10 +335,10 @@ function diffRowButtons(id: string): string {
   const forceBtn = `<button class="ghost-btn accent" data-individual-force="${id}">このまま更新</button>`;
   const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
   if (!placed) {
-    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">最新インスタンスを重ねて配置</button></div>`;
+    return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">比較用インスタンスを配置</button></div>`;
   }
   const eyeIcon = latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
-  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">配置した最新インスタンスを削除</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}表示/非表示</button></div>`;
+  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">比較用インスタンスを削除</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}表示/非表示</button></div>`;
 }
 
 function diffRowHtml(id: string, justEntered: boolean): string {
@@ -511,28 +511,28 @@ bindListToolbar("diff");
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
-  $("updateBtnLabel").textContent = `一括 更新（${cleanChecked}件）`;
+  $("updateBtnLabel").textContent = `一括更新（${cleanChecked}件）`;
   ($("updateBtn") as HTMLButtonElement).disabled = cleanChecked === 0;
 
   const placeableChecked = diffIds.filter(
     (id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id)
   ).length;
-  $("placeLatestBtnLabel").textContent = `一括 最新インスタンスを重ねて配置（${placeableChecked}件）`;
+  $("placeLatestBtnLabel").textContent = `比較用インスタンスを一括配置（${placeableChecked}件）`;
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
   // Unlike the other footer buttons, this isn't scoped to checked rows —
   // it's a full sweep of every tagged node on every page (same as the
   // former standalone "すべて削除", which this button absorbed), so its
   // count and enabled state come from markerCount, not the row list.
-  $("clearAllLatestBtnLabel").textContent = `配置した最新インスタンスをすべて削除（${markerCount}件）`;
+  $("clearAllLatestBtnLabel").textContent = `比較用インスタンスをすべて削除（${markerCount}件）`;
   ($("clearAllLatestBtn") as HTMLButtonElement).disabled = markerCount === 0;
 
   const forceChecked = diffIds.filter((id) => checked[id]).length;
-  $("forceUpdateBtnLabel").textContent = `一括 このまま更新（${forceChecked}件）`;
+  $("forceUpdateBtnLabel").textContent = `このまま一括更新（${forceChecked}件）`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
-/* ---- 一括 更新 / 一括 最新インスタンスを重ねて配置 / 配置した最新インスタンスをすべて削除 / 一括 このまま更新 ---- */
+/* ---- 一括更新 / 比較用インスタンスを一括配置 / 比較用インスタンスをすべて削除 / このまま一括更新 ---- */
 function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
@@ -557,7 +557,7 @@ $("updateBtn").addEventListener("click", () => {
 $("placeLatestBtn").addEventListener("click", () => {
   const targets = diffIds.filter((id) => checked[id] && !Object.prototype.hasOwnProperty.call(latestVisible, id));
   if (targets.length === 0) return;
-  showBulkBusy("最新インスタンスを配置しています");
+  showBulkBusy("比較用インスタンスを配置しています");
   post({ type: "place-latest-bulk", ids: targets });
 });
 
@@ -599,7 +599,7 @@ function onLatestPlaced(id: string): void {
   const row = rows.get(id);
   latestVisible[id] = true;
   renderTabs();
-  showToast(`「${row?.name ?? id}」に最新インスタンスを重ねて配置しました`);
+  showToast(`「${row?.name ?? id}」に比較用インスタンスを配置しました`);
 }
 
 function onLatestPlacedBulk(ids: string[]): void {
@@ -608,7 +608,7 @@ function onLatestPlacedBulk(ids: string[]): void {
   });
   renderTabs();
   show("result");
-  showToast(`${ids.length}件に最新インスタンスを重ねて配置しました`);
+  showToast(`${ids.length}件に比較用インスタンスを配置しました`);
   setChromeSub("検出完了");
 }
 
@@ -621,10 +621,10 @@ function onLatestRemoved(id: string): void {
   const row = rows.get(id);
   delete latestVisible[id];
   renderTabs();
-  showToast(`「${row?.name ?? id}」に配置した最新インスタンスを削除しました`);
+  showToast(`「${row?.name ?? id}」に比較用インスタンスを削除しました`);
 }
 
-// Fires for "配置した最新インスタンスをすべて削除" — a full sweep of every tagged node on
+// Fires for "比較用インスタンスをすべて削除" — a full sweep of every tagged node on
 // every page, regardless of which rows are currently checked (or even
 // currently listed — it also catches leftovers from a previous session).
 // Rows named here revert to "not placed" so the place button re-enables,
@@ -633,7 +633,7 @@ function onLatestRemoved(id: string): void {
 function onMarkersCleared(ids: string[] | undefined, count: number): void {
   (ids && ids.length ? ids : Object.keys(latestVisible)).forEach((id) => delete latestVisible[id]);
   renderTabs();
-  showToast(`最新インスタンス（プレビュー）を${count}件削除しました`);
+  showToast(`比較用インスタンスを${count}件削除しました`);
 }
 
 /* ---- このまま更新の確認ダイアログ ---- */
@@ -685,7 +685,7 @@ $("modalConfirm").addEventListener("click", () => {
 });
 
 /* ---- マーカー（配置済みLatestプレビュー）件数 ---- */
-// Drives only the "配置した最新インスタンスをすべて削除" button's label/disabled state now
+// Drives only the "比較用インスタンスをすべて削除" button's label/disabled state now
 // — the standalone marker-strip display + its own "すべて削除" button
 // were removed since they duplicated that button's role.
 function setMarkerCount(count: number): void {
@@ -727,7 +727,7 @@ window.onmessage = (event: MessageEvent) => {
       onLatestPlaced(msg.id);
       break;
     case "place-latest-bulk-progress":
-      onBulkProgress("最新インスタンスを配置しています", msg.name, msg.index, msg.total);
+      onBulkProgress("比較用インスタンスを配置しています", msg.name, msg.index, msg.total);
       break;
     case "place-latest-bulk-done":
       onLatestPlacedBulk(msg.ids);
