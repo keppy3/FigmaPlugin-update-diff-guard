@@ -255,6 +255,15 @@
     }
     return false;
   }
+  function nodePath(node) {
+    const parts = [];
+    let p = node;
+    while (p && p.type !== "DOCUMENT") {
+      parts.unshift(p.name);
+      p = p.parent;
+    }
+    return parts.join(" / ");
+  }
   async function handleScanLibrary() {
     var _a;
     const components = [];
@@ -275,6 +284,7 @@
           componentSets.push({
             name: node.name,
             key: node.key,
+            path: nodePath(node),
             variantProps,
             children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
               var _a2;
@@ -284,7 +294,7 @@
         } else if (node.type === "COMPONENT") {
           if (((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") continue;
           if (hasComponentAncestor(node)) continue;
-          components.push({ name: node.name, key: node.key });
+          components.push({ name: node.name, key: node.key, path: nodePath(node) });
         }
       }
     }

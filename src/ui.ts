@@ -732,10 +732,11 @@ function showScanLib(name: keyof typeof scanLibViews): void {
 interface LibraryScanData {
   libraryName: string;
   exportedAt: string;
-  components: { name: string; key: string }[];
+  components: { name: string; key: string; path: string }[];
   componentSets: {
     name: string;
     key: string;
+    path: string;
     variantProps: Record<string, string[]>;
     children: { key: string; variantProperties: Record<string, string> }[];
   }[];

@@ -401,11 +401,13 @@ async function handleClearMarkers(): Promise<void> {
 interface LibraryComponentEntry {
   name: string;
   key: string;
+  path: string; // デバッグ用: ページ名からのレイヤーパス（何を数えてしまっているか調査するため。§診断参照）
 }
 
 interface LibraryComponentSetEntry {
   name: string;
   key: string;
+  path: string; // デバッグ用: 同上
   variantProps: Record<string, string[]>;
   children: { key: string; variantProperties: Record<string, string> }[];
 }
@@ -433,6 +435,19 @@ function hasComponentAncestor(node: BaseNode): boolean {
   return false;
 }
 
+// デバッグ用: 「ページ名 / 親フレーム名 / ... / ノード名」の形でレイヤーパスを
+// 組み立てる。想定外に大量カウントされている原因を、名前だけでなく所在（どの
+// ページ・どの階層にあるか）まで見えるようにして調査するためのもの。
+function nodePath(node: BaseNode): string {
+  const parts: string[] = [];
+  let p: BaseNode | null = node;
+  while (p && p.type !== "DOCUMENT") {
+    parts.unshift(p.name);
+    p = p.parent;
+  }
+  return parts.join(" / ");
+}
+
 async function handleScanLibrary(): Promise<void> {
   const components: LibraryComponentEntry[] = [];
   const componentSets: LibraryComponentSetEntry[] = [];
@@ -454,6 +469,7 @@ async function handleScanLibrary(): Promise<void> {
         componentSets.push({
           name: node.name,
           key: node.key,
+          path: nodePath(node),
           variantProps,
           children: node.children
             .filter((c): c is ComponentNode => c.type === "COMPONENT")
@@ -464,7 +480,7 @@ async function handleScanLibrary(): Promise<void> {
         // 単体コンポーネントとしては数えない。
         if (node.parent?.type === "COMPONENT_SET") continue;
         if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
-        components.push({ name: node.name, key: node.key });
+        components.push({ name: node.name, key: node.key, path: nodePath(node) });
       }
     }
   }
