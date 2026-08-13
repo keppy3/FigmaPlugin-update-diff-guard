@@ -389,6 +389,77 @@ async function handleClearMarkers(): Promise<void> {
   post({ type: "marker-count", count: 0 });
 }
 
+// ---- ライブラリスキャン（スワップ先コンポーネントリストの作成） -------------
+//
+// 実行するファイル自体が「スワップ先の新しいライブラリ」であるという前提で、
+// 全ページを走査してComponent/ComponentSetを収集し、name/key/バリアント構成
+// をまとめたJSONを作る。Component/ComponentSetの実体をインポートするのは
+// ここでは一切行わない（importComponentByKeyAsyncは大量呼び出し時に不安定と
+// いう報告があるため、実際にマッチした分だけスワップ実行側で都度インポート
+// する設計。§Spec.md参照）。
+
+interface LibraryComponentEntry {
+  name: string;
+  key: string;
+}
+
+interface LibraryComponentSetEntry {
+  name: string;
+  key: string;
+  variantProps: Record<string, string[]>;
+  children: { key: string; variantProperties: Record<string, string> }[];
+}
+
+interface LibraryScanData {
+  libraryName: string;
+  exportedAt: string;
+  components: LibraryComponentEntry[];
+  componentSets: LibraryComponentSetEntry[];
+}
+
+async function handleScanLibrary(): Promise<void> {
+  const components: LibraryComponentEntry[] = [];
+  const componentSets: LibraryComponentSetEntry[] = [];
+
+  const pages = figma.root.children;
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    await page.loadAsync();
+    post({ type: "library-scan-progress", name: page.name, index: i + 1, total: pages.length });
+
+    const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
+    for (const node of found) {
+      if (node.type === "COMPONENT_SET") {
+        const variantProps: Record<string, string[]> = {};
+        for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
+          variantProps[prop] = info.values;
+        }
+        componentSets.push({
+          name: node.name,
+          key: node.key,
+          variantProps,
+          children: node.children
+            .filter((c): c is ComponentNode => c.type === "COMPONENT")
+            .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
+        });
+      } else if (node.type === "COMPONENT") {
+        // セットの子（バリアント）はセット側でchildrenとして拾い済みなので、
+        // 単体コンポーネントとしては数えない。
+        if (node.parent?.type === "COMPONENT_SET") continue;
+        components.push({ name: node.name, key: node.key });
+      }
+    }
+  }
+
+  const data: LibraryScanData = {
+    libraryName: figma.root.name,
+    exportedAt: new Date().toISOString(),
+    components,
+    componentSets,
+  };
+  post({ type: "library-scan-done", data });
+}
+
 // ---- キャンバスでジャンプ -----------------------------------------------
 
 function findOwningPage(node: BaseNode): PageNode | null {
@@ -453,6 +524,9 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "clear-markers":
         await handleClearMarkers();
+        break;
+      case "scan-library":
+        await handleScanLibrary();
         break;
     }
   } catch (err) {

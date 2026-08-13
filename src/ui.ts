@@ -135,6 +135,8 @@ function selectMode(mode: Mode): void {
       } else if (views.busy.classList.contains("hidden")) {
         resetToSetup();
       }
+    } else if (mode === "swap-scan") {
+      showScanLib("intro");
     }
     return;
   }
@@ -714,6 +716,83 @@ function setMarkerCount(count: number): void {
   updateFooterButtons();
 }
 
+/* ---- ライブラリスキャン（スワップ先コンポーネントリストの作成） ---- */
+const scanLibViews = {
+  intro: $("scanLibIntroView"),
+  busy: $("scanLibBusyView"),
+  result: $("scanLibResultView"),
+};
+
+function showScanLib(name: keyof typeof scanLibViews): void {
+  (Object.keys(scanLibViews) as Array<keyof typeof scanLibViews>).forEach((k) =>
+    scanLibViews[k].classList.toggle("hidden", k !== name)
+  );
+}
+
+interface LibraryScanData {
+  libraryName: string;
+  exportedAt: string;
+  components: { name: string; key: string }[];
+  componentSets: {
+    name: string;
+    key: string;
+    variantProps: Record<string, string[]>;
+    children: { key: string; variantProperties: Record<string, string> }[];
+  }[];
+}
+
+let lastLibraryScanJson = "";
+
+$("scanLibStartBtn").addEventListener("click", () => {
+  showScanLib("busy");
+  $("scanLibBusyStep").textContent = "";
+  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = "0%";
+  post({ type: "scan-library" });
+});
+
+function onLibraryScanProgress(name: string, index: number, total: number): void {
+  $("scanLibBusyStep").textContent = `${name} (${index} / ${total})`;
+  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = `${Math.round((index / total) * 100)}%`;
+}
+
+function onLibraryScanDone(data: LibraryScanData): void {
+  $("scanLibComponentCount").textContent = String(data.components.length);
+  $("scanLibSetCount").textContent = String(data.componentSets.length);
+  lastLibraryScanJson = JSON.stringify(data, null, 2);
+  $("scanLibJsonPreview").textContent = lastLibraryScanJson;
+  showScanLib("result");
+}
+
+function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return Promise.reject(new Error("clipboard API unavailable"));
+}
+
+$("scanLibCopyBtn").addEventListener("click", () => {
+  copyToClipboard(lastLibraryScanJson)
+    .then(() => showToast("クリップボードにコピーしました"))
+    .catch(() => {
+      // Figmaプラグインのiframeサンドボックスでnavigator.clipboardが使えない
+      // 場合のフォールバック（非表示textarea + 旧execCommand('copy')）。
+      const ta = document.createElement("textarea");
+      ta.value = lastLibraryScanJson;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        showToast("クリップボードにコピーしました");
+      } catch {
+        showToast("コピーに失敗しました。手動で選択してコピーしてください");
+      } finally {
+        document.body.removeChild(ta);
+      }
+    });
+});
+
 /* ---- メッセージルーティング ---- */
 window.onmessage = (event: MessageEvent) => {
   const msg = event.data?.pluginMessage;
@@ -764,6 +843,12 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "marker-count":
       setMarkerCount(msg.count);
+      break;
+    case "library-scan-progress":
+      onLibraryScanProgress(msg.name, msg.index, msg.total);
+      break;
+    case "library-scan-done":
+      onLibraryScanDone(msg.data);
       break;
     case "error":
       showToast(`エラー: ${msg.message}`);

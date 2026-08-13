@@ -247,6 +247,45 @@
     post({ type: "markers-cleared", count, ids: clearedIds });
     post({ type: "marker-count", count: 0 });
   }
+  async function handleScanLibrary() {
+    var _a;
+    const components = [];
+    const componentSets = [];
+    const pages = figma.root.children;
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      await page.loadAsync();
+      post({ type: "library-scan-progress", name: page.name, index: i + 1, total: pages.length });
+      const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
+      for (const node of found) {
+        if (node.type === "COMPONENT_SET") {
+          const variantProps = {};
+          for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
+            variantProps[prop] = info.values;
+          }
+          componentSets.push({
+            name: node.name,
+            key: node.key,
+            variantProps,
+            children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
+              var _a2;
+              return { key: c.key, variantProperties: (_a2 = c.variantProperties) != null ? _a2 : {} };
+            })
+          });
+        } else if (node.type === "COMPONENT") {
+          if (((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") continue;
+          components.push({ name: node.name, key: node.key });
+        }
+      }
+    }
+    const data = {
+      libraryName: figma.root.name,
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      components,
+      componentSets
+    };
+    post({ type: "library-scan-done", data });
+  }
   function findOwningPage(node) {
     let p = node;
     while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
@@ -295,6 +334,9 @@
           break;
         case "clear-markers":
           await handleClearMarkers();
+          break;
+        case "scan-library":
+          await handleScanLibrary();
           break;
       }
     } catch (err) {
