@@ -270,6 +270,23 @@
     font-family: var(--mono); font-size: 9.5px; line-height: 1.6; color: var(--text-muted);
     padding: 10px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
   }
+
+  /* ---- ライブラリスワップ: 対応表の貼り付け ---- */
+  .field-head { display: flex; align-items: center; gap: 6px; }
+  .info-btn {
+    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--text-faint); background: none;
+    color: var(--text-faint); font-size: 9.5px; font-weight: 700; font-style: italic; font-family: Georgia, serif;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; flex: none; line-height: 1;
+  }
+  .info-btn:hover { border-color: var(--accent); color: var(--accent); }
+  textarea.paste-area {
+    width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--panel-border); border-radius: 8px;
+    background: var(--panel-bg); color: var(--text); font-family: var(--mono); font-size: 10px; line-height: 1.5;
+    padding: 9px; box-sizing: border-box;
+  }
+  textarea.paste-area:hover { border-color: var(--accent); }
+  .paste-status { font-size: 10.5px; font-weight: 600; min-height: 14px; margin-top: -4px; }
+  .paste-status.error { color: var(--danger); }
 </style>
 </head>
 <body>
@@ -371,9 +388,33 @@
 
     </div>
 
-    <!-- ライブラリスワップは後続タスクで実装 -->
     <div class="mode-pane hidden" id="swapApplyModePane">
-      <div class="setup"><div class="setup-intro">（ライブラリスワップは実装予定です）</div></div>
+      <!-- スキャン結果（3タブ）は後続タスクで実装。ここは貼り付け＋スキャン範囲＋スキャン開始まで -->
+      <div class="setup" id="swapPasteView">
+        <div class="field-head">
+          <span class="setup-label">スワップ先コンポーネントリスト</span>
+          <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先コンポーネントリストについて">i</button>
+        </div>
+        <textarea class="paste-area" id="swapPasteTextarea" spellcheck="false"></textarea>
+        <div class="paste-status" id="swapPasteStatus"></div>
+        <div class="setup-label">スキャン範囲</div>
+        <div class="radio-group" id="swapRadioGroup">
+          <label class="radio-option active" data-scope="selection">
+            <span class="radio-row"><input type="radio" name="swapscope" value="selection" checked><span>選択範囲</span></span>
+            <span class="radio-caption">選択したフレーム／グループ等の内部も含む</span>
+          </label>
+          <label class="radio-option" data-scope="page">
+            <span class="radio-row"><input type="radio" name="swapscope" value="page"><span>現在のページ</span></span>
+            <span class="radio-caption">選択状態に関わらずページ全体</span>
+          </label>
+          <label class="radio-option" data-scope="all">
+            <span class="radio-row"><input type="radio" name="swapscope" value="all"><span>すべてのページ</span></span>
+            <span class="radio-caption">ファイル内の全ページ</span>
+          </label>
+        </div>
+        <button class="btn-big" id="swapScanBtn" disabled>スキャン</button>
+        <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
+      </div>
     </div>
 
     <div class="mode-pane hidden" id="swapScanModePane">
@@ -409,6 +450,14 @@
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
+    <div class="modal-box">
+      <div class="modal-title">スワップ先コンポーネントリストとは</div>
+      <div class="modal-body">スワップを実行するには、事前にライブラリファイル側でライブラリスキャンを実行し、スワップ先コンポーネントリスト（JSON）を取得する必要があります。<br><br>スワップ先コンポーネントリストを取得したら、このテキストエリアに貼り付けてください。</div>
+      <div class="modal-actions"><button class="ghost-btn" id="swapPasteInfoClose">閉じる</button></div>
+    </div>
+  </div>
 
   <div class="modal-overlay hidden" id="confirmOverlay">
     <div class="modal-box">

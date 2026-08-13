@@ -797,6 +797,67 @@ $("scanLibCopyBtn").addEventListener("click", () => {
     });
 });
 
+/* ---- ライブラリスワップ: 対応表の貼り付け＋スキャン範囲＋スキャン開始 ----
+   スキャン結果（✅️/⚠️/🧭タブ）はまだ実装していない。ここではJSONを検証し、
+   有効ならscan-swapメッセージを送るところまで。 */
+$("swapPasteInfoBtn").addEventListener("click", () => $("swapPasteInfoOverlay").classList.remove("hidden"));
+$("swapPasteInfoClose").addEventListener("click", () => $("swapPasteInfoOverlay").classList.add("hidden"));
+$("swapPasteInfoOverlay").addEventListener("click", (e) => {
+  if (e.target === $("swapPasteInfoOverlay")) $("swapPasteInfoOverlay").classList.add("hidden");
+});
+
+$("swapRadioGroup").addEventListener("change", (e) => {
+  const target = e.target as HTMLInputElement;
+  if (target.name !== "swapscope") return;
+  document.querySelectorAll("#swapRadioGroup .radio-option").forEach((opt) => {
+    opt.classList.toggle("active", opt.getAttribute("data-scope") === target.value);
+  });
+});
+
+// 貼り付け内容をその場で検証する。問題があるときだけ赤字で知らせ、問題なければ
+// 何も表示しない。スキャンボタンは有効なリストが入っているときだけ押せる
+// （「読み込む」という別ステップは設けない）。
+let parsedSwapMapping: LibraryScanData | null = null;
+
+function validateSwapPaste(): void {
+  const raw = ($("swapPasteTextarea") as HTMLTextAreaElement).value.trim();
+  const statusEl = $("swapPasteStatus");
+  const scanBtn = $("swapScanBtn") as HTMLButtonElement;
+
+  if (!raw) {
+    statusEl.textContent = "⚠ スワップ先コンポーネントリストを貼り付けてください";
+    statusEl.className = "paste-status error";
+    scanBtn.disabled = true;
+    parsedSwapMapping = null;
+    return;
+  }
+  let parsed: LibraryScanData | null = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
+    statusEl.textContent = "⚠ スワップ先コンポーネントリストの形式が正しくありません";
+    statusEl.className = "paste-status error";
+    scanBtn.disabled = true;
+    parsedSwapMapping = null;
+    return;
+  }
+  statusEl.textContent = "";
+  statusEl.className = "paste-status";
+  scanBtn.disabled = false;
+  parsedSwapMapping = parsed;
+}
+
+$("swapPasteTextarea").addEventListener("input", validateSwapPaste);
+
+$("swapScanBtn").addEventListener("click", () => {
+  if (!parsedSwapMapping) return;
+  const checkedRadio = document.querySelector<HTMLInputElement>('input[name="swapscope"]:checked');
+  post({ type: "scan-swap", scope: checkedRadio ? checkedRadio.value : "selection", mapping: parsedSwapMapping });
+});
+
 /* ---- メッセージルーティング ---- */
 window.onmessage = (event: MessageEvent) => {
   const msg = event.data?.pluginMessage;
