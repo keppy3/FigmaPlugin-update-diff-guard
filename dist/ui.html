@@ -188,16 +188,12 @@
   .preview-row { display: flex; align-items: flex-start; gap: 10px; }
 
   .thumb-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; }
-  .preview-frame { width: 96px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
+  .preview-frame { width: 120px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .thumb-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+  .thumb-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
 
-  /* 画像右脇に縦組みで「状態バッジ」＋「ジャンプ」を置く */
-  .side-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-left: auto; padding-top: 2px; }
-  .side-caption { font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .side-caption.match { color: var(--success); }
-  .side-caption.pct { color: var(--warning-strong); }
-  .side-caption.mismatch { color: var(--danger); }
+  /* サムネイルの高さに合わせて「ジャンプ」ボタンだけを縦中央に置く（状態表示はthumb-labelに統合済み） */
+  .side-col { height: 68px; display: flex; align-items: center; margin-left: auto; }
 
   .ghost-btn { font-size: 10.5px; font-weight: 600; color: var(--text); background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 9px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
   .ghost-btn:hover { background: var(--row-hover); }
@@ -798,8 +794,8 @@
     </summary>
     <div class="row-detail">
       <div class="preview-row">
-        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest</span></div>
-        <div class="side-col"><span class="side-caption match">\u5B8C\u5168\u4E00\u81F4</span>${jumpBtnHtml(id)}</div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest\uFF08\u5B8C\u5168\u4E00\u81F4\uFF09</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
       <div class="row-buttons"><button class="ghost-btn accent" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>
     </div>
@@ -818,7 +814,7 @@
     var _a;
     const row = rows.get(id);
     if (!row) return "";
-    const sideCaption = row.sizeMismatch ? `<span class="side-caption mismatch">\u30B5\u30A4\u30BA\u4E0D\u4E00\u81F4</span>` : `<span class="side-caption pct">\u5DEE\u5206 ${((_a = row.diffPercent) != null ? _a : 0).toFixed(1)}%</span>`;
+    const latestLabel = row.sizeMismatch ? "Latest\uFF08\u30B5\u30A4\u30BA\u4E0D\u4E00\u81F4\uFF09" : `Latest\uFF08\u5DEE\u5206${((_a = row.diffPercent) != null ? _a : 0).toFixed(1)}%\uFF09`;
     const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
     return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
@@ -829,8 +825,8 @@
     <div class="row-detail">
       <div class="preview-row">
         <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
-        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">Latest</span></div>
-        <div class="side-col">${sideCaption}${jumpBtnHtml(id)}</div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">${latestLabel}</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
       ${diffRowButtons(id)}
     </div>

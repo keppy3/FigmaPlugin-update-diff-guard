@@ -188,16 +188,12 @@
   .preview-row { display: flex; align-items: flex-start; gap: 10px; }
 
   .thumb-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; }
-  .preview-frame { width: 96px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
+  .preview-frame { width: 120px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .thumb-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+  .thumb-label { font-size: 9.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
 
-  /* 画像右脇に縦組みで「状態バッジ」＋「ジャンプ」を置く */
-  .side-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-left: auto; padding-top: 2px; }
-  .side-caption { font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .side-caption.match { color: var(--success); }
-  .side-caption.pct { color: var(--warning-strong); }
-  .side-caption.mismatch { color: var(--danger); }
+  /* サムネイルの高さに合わせて「ジャンプ」ボタンだけを縦中央に置く（状態表示はthumb-labelに統合済み） */
+  .side-col { height: 68px; display: flex; align-items: center; margin-left: auto; }
 
   .ghost-btn { font-size: 10.5px; font-weight: 600; color: var(--text); background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 9px; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
   .ghost-btn:hover { background: var(--row-hover); }

@@ -320,8 +320,8 @@ function cleanRowHtml(id: string, justEntered: boolean): string {
     </summary>
     <div class="row-detail">
       <div class="preview-row">
-        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest</span></div>
-        <div class="side-col"><span class="side-caption match">完全一致</span>${jumpBtnHtml(id)}</div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest（完全一致）</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
       <div class="row-buttons"><button class="ghost-btn accent" data-individual-update="${id}">更新する</button></div>
     </div>
@@ -345,9 +345,9 @@ function diffRowHtml(id: string, justEntered: boolean): string {
   const row = rows.get(id);
   if (!row) return "";
 
-  const sideCaption = row.sizeMismatch
-    ? `<span class="side-caption mismatch">サイズ不一致</span>`
-    : `<span class="side-caption pct">差分 ${(row.diffPercent ?? 0).toFixed(1)}%</span>`;
+  const latestLabel = row.sizeMismatch
+    ? "Latest（サイズ不一致）"
+    : `Latest（差分${(row.diffPercent ?? 0).toFixed(1)}%）`;
 
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
 
@@ -360,8 +360,8 @@ function diffRowHtml(id: string, justEntered: boolean): string {
     <div class="row-detail">
       <div class="preview-row">
         <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
-        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">Latest</span></div>
-        <div class="side-col">${sideCaption}${jumpBtnHtml(id)}</div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">${latestLabel}</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
       ${diffRowButtons(id)}
     </div>
