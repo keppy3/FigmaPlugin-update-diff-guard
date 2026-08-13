@@ -1208,7 +1208,7 @@ function renderSwapStray(): void {
     html += `<div class="stray-group-head">その他 (${sumCount(byOther)})</div>`;
     html += rows(byOther);
   }
-  $("swapStrayList").innerHTML = html || '<div class="empty-state">迷子の項目はありません</div>';
+  $("swapStrayList").innerHTML = html || '<div class="empty-state">該当なしの項目はありません</div>';
 }
 
 function swapEmptyState(kind: "clean" | "diff"): string {

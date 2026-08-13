@@ -288,7 +288,7 @@
   .paste-status { font-size: 10.5px; font-weight: 600; min-height: 14px; margin-top: -4px; }
   .paste-status.error { color: var(--danger); }
 
-  /* ---- 迷子タブ（🧭）---- */
+  /* ---- 該当なしタブ（❓️。内部では「迷子(stray)」と呼んでいる）---- */
   .stray-group-head {
     padding: 9px 14px 5px; font-size: 10.5px; font-weight: 700; color: var(--text-muted);
     display: flex; align-items: center; gap: 6px; background: var(--row-hover);
@@ -463,7 +463,7 @@
         <div class="tabs">
           <button class="tab active" data-swaptab="clean">✅️ 見た目差分なし <span class="tab-count" id="swapCleanCount">(0)</span></button>
           <button class="tab" data-swaptab="diff">⚠️ 見た目差分あり <span class="tab-count" id="swapDiffCount">(0)</span></button>
-          <button class="tab" data-swaptab="stray">🧭 迷子 <span class="tab-count" id="swapStrayCount">(0)</span></button>
+          <button class="tab" data-swaptab="stray">❓️ 該当なし <span class="tab-count" id="swapStrayCount">(0)</span></button>
         </div>
 
         <div class="tab-panel" data-swappanel="clean">
