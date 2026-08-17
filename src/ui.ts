@@ -866,11 +866,9 @@ function onLibraryScanProgress(name: string, index: number, total: number): void
 }
 
 function onLibraryScanDone(data: LibraryScanData): void {
-  $("scanLibComponentCount").textContent = String(data.components.length);
-  $("scanLibSetCount").textContent = String(data.componentSets.length);
-  $("scanLibVariantCount").textContent = String(
-    data.componentSets.reduce((sum, set) => sum + set.children.length, 0)
-  );
+  // 単体コンポーネントとコンポーネントセットは、スワップ対象の「差し替え単位」
+  // としては同格なので合算した1つの数字だけ見せる（内訳はJSONプレビューで見れる）。
+  $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
   lastLibraryScanJson = JSON.stringify(data, null, 2);
   $("scanLibJsonPreview").textContent = lastLibraryScanJson;
   showScanLib("result");

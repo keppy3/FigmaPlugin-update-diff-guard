@@ -262,7 +262,7 @@
   }
   .confirm-banner svg { width: 14px; height: 14px; flex: none; }
   .stat-summary { display: flex; gap: 8px; }
-  .stat-box { flex: 1; border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px 10px 9px; display: flex; flex-direction: column; gap: 2px; }
+  .stat-box { flex: 0 0 auto; min-width: 110px; border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px 10px 9px; display: flex; flex-direction: column; gap: 2px; }
   .stat-box .num { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .stat-box .label { font-size: 10px; color: var(--text-muted); }
   .json-preview {
@@ -533,9 +533,7 @@
           <span>スキャンが完了しました</span>
         </div>
         <div class="stat-summary">
-          <div class="stat-box"><span class="num" id="scanLibComponentCount">0</span><span class="label">単体コンポーネント</span></div>
-          <div class="stat-box"><span class="num" id="scanLibSetCount">0</span><span class="label">コンポーネントセット</span></div>
-          <div class="stat-box"><span class="num" id="scanLibVariantCount">0</span><span class="label">バリアント合計</span></div>
+          <div class="stat-box"><span class="num" id="scanLibComponentCount">0</span><span class="label">コンポーネント</span></div>
         </div>
         <div class="setup-label">スワップ先ライブラリの公開リストの内容</div>
         <div class="json-preview" id="scanLibJsonPreview"></div>
