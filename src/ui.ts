@@ -825,7 +825,7 @@ function setMarkerCount(count: number): void {
   updateSwapFooterButtons();
 }
 
-/* ---- ライブラリスキャン（スワップ先コンポーネントリストの作成） ---- */
+/* ---- ライブラリスキャン（スワップ先ライブラリの公開リストの作成） ---- */
 const scanLibViews = {
   intro: $("scanLibIntroView"),
   busy: $("scanLibBusyView"),
@@ -934,7 +934,7 @@ function validateSwapPaste(): void {
   const scanBtn = $("swapScanBtn") as HTMLButtonElement;
 
   if (!raw) {
-    statusEl.textContent = "⚠ スワップ先コンポーネントリストを貼り付けてください";
+    statusEl.textContent = "⚠ スワップ先ライブラリの公開リストを貼り付けてください";
     statusEl.className = "paste-status error";
     scanBtn.disabled = true;
     parsedSwapMapping = null;
@@ -947,7 +947,7 @@ function validateSwapPaste(): void {
     parsed = null;
   }
   if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
-    statusEl.textContent = "⚠ スワップ先コンポーネントリストの形式が正しくありません";
+    statusEl.textContent = "⚠ スワップ先ライブラリの公開リストの形式が正しくありません";
     statusEl.className = "paste-status error";
     scanBtn.disabled = true;
     parsedSwapMapping = null;

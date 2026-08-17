@@ -416,8 +416,8 @@
       <!-- スキャン結果（3タブ）は後続タスクで実装。ここは貼り付け＋スキャン範囲＋スキャン開始まで -->
       <div class="setup" id="swapPasteView">
         <div class="field-head">
-          <span class="setup-label">スワップ先コンポーネントリスト</span>
-          <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先コンポーネントリストについて">i</button>
+          <span class="setup-label">スワップ先ライブラリの公開リスト</span>
+          <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先ライブラリの公開リストについて">i</button>
         </div>
         <textarea class="paste-area" id="swapPasteTextarea" spellcheck="false"></textarea>
         <div class="paste-status" id="swapPasteStatus"></div>
@@ -516,7 +516,7 @@
 
     <div class="mode-pane hidden" id="swapScanModePane">
       <div class="setup" id="scanLibIntroView">
-        <div class="setup-intro">このファイル内のコンポーネント／コンポーネントセットをすべて走査し、名前・キー・バリアント構成をまとめた<b>スワップ先コンポーネントリスト</b>を作成します。<br><br>このファイルが<b>スワップ先の新しいライブラリ</b>であることを確認してください。</div>
+        <div class="setup-intro">このファイル内のコンポーネント／コンポーネントセットをすべて走査し、名前・キー・バリアント構成をまとめた<b>スワップ先ライブラリの公開リスト</b>を作成します。<br><br>このファイルが<b>スワップ先の新しいライブラリ</b>であることを確認してください。</div>
         <button class="btn-big" id="scanLibStartBtn">スキャン開始</button>
       </div>
 
@@ -537,9 +537,9 @@
           <div class="stat-box"><span class="num" id="scanLibSetCount">0</span><span class="label">コンポーネントセット</span></div>
           <div class="stat-box"><span class="num" id="scanLibVariantCount">0</span><span class="label">バリアント合計</span></div>
         </div>
-        <div class="setup-label">スワップ先コンポーネントリストの内容</div>
+        <div class="setup-label">スワップ先ライブラリの公開リストの内容</div>
         <div class="json-preview" id="scanLibJsonPreview"></div>
-        <button class="btn-big" id="scanLibCopyBtn">スワップ先コンポーネントリストをコピー</button>
+        <button class="btn-big" id="scanLibCopyBtn">スワップ先ライブラリの公開リストをコピー</button>
         <div class="setup-footnote">このリストを、スワップ対象の遷移図ファイル側の「ライブラリスワップ」に貼り付けてください</div>
       </div>
     </div>
@@ -561,8 +561,8 @@
 
   <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
     <div class="modal-box">
-      <div class="modal-title">スワップ先コンポーネントリストとは</div>
-      <div class="modal-body">スワップを実行するには、事前にライブラリファイル側でライブラリスキャンを実行し、スワップ先コンポーネントリスト（JSON）を取得する必要があります。<br><br>スワップ先コンポーネントリストを取得したら、このテキストエリアに貼り付けてください。</div>
+      <div class="modal-title">スワップ先ライブラリの公開リストとは</div>
+      <div class="modal-body">スワップを実行するには、事前にライブラリファイル側でライブラリスキャンを実行し、スワップ先ライブラリの公開リスト（JSON）を取得する必要があります。<br><br>スワップ先ライブラリの公開リストを取得したら、このテキストエリアに貼り付けてください。</div>
       <div class="modal-actions"><button class="ghost-btn" id="swapPasteInfoClose">閉じる</button></div>
     </div>
   </div>
@@ -1463,7 +1463,7 @@
     const statusEl = $("swapPasteStatus");
     const scanBtn = $("swapScanBtn");
     if (!raw) {
-      statusEl.textContent = "\u26A0 \u30B9\u30EF\u30C3\u30D7\u5148\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30EA\u30B9\u30C8\u3092\u8CBC\u308A\u4ED8\u3051\u3066\u304F\u3060\u3055\u3044";
+      statusEl.textContent = "\u26A0 \u30B9\u30EF\u30C3\u30D7\u5148\u30E9\u30A4\u30D6\u30E9\u30EA\u306E\u516C\u958B\u30EA\u30B9\u30C8\u3092\u8CBC\u308A\u4ED8\u3051\u3066\u304F\u3060\u3055\u3044";
       statusEl.className = "paste-status error";
       scanBtn.disabled = true;
       parsedSwapMapping = null;
@@ -1476,7 +1476,7 @@
       parsed = null;
     }
     if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
-      statusEl.textContent = "\u26A0 \u30B9\u30EF\u30C3\u30D7\u5148\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30EA\u30B9\u30C8\u306E\u5F62\u5F0F\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093";
+      statusEl.textContent = "\u26A0 \u30B9\u30EF\u30C3\u30D7\u5148\u30E9\u30A4\u30D6\u30E9\u30EA\u306E\u516C\u958B\u30EA\u30B9\u30C8\u306E\u5F62\u5F0F\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093";
       statusEl.className = "paste-status error";
       scanBtn.disabled = true;
       parsedSwapMapping = null;
