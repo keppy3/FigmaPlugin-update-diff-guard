@@ -5,8 +5,8 @@
   var SWAP_MAPPING_CACHE_KEY = "swap-mapping-cache";
   (async () => {
     const cached = await figma.clientStorage.getAsync(SWAP_MAPPING_CACHE_KEY);
-    if (typeof cached === "string" && cached) {
-      post({ type: "swap-mapping-cache-loaded", raw: cached });
+    if (Array.isArray(cached) && cached.length) {
+      post({ type: "swap-mapping-cache-loaded", raws: cached });
     }
   })();
   var store = /* @__PURE__ */ new Map();
@@ -334,7 +334,15 @@
       components,
       componentSets
     };
-    post({ type: "library-scan-done", data });
+    let coverThumbnail;
+    try {
+      const thumbNode = await figma.getFileThumbnailNodeAsync();
+      if (thumbNode) {
+        coverThumbnail = await thumbNode.exportAsync({ format: "PNG", constraint: { type: "WIDTH", value: 64 } });
+      }
+    } catch (e) {
+    }
+    post({ type: "library-scan-done", data, coverThumbnail });
   }
   function variantPropsEqual(a, b) {
     const aKeys = Object.keys(a);
@@ -365,12 +373,18 @@
     }
     return { key: comp.key };
   }
-  async function handleScanSwap(scope, mapping) {
+  async function handleScanSwap(scope, mappings) {
     swapScanCancelled = false;
     const nameToComponent = /* @__PURE__ */ new Map();
-    for (const c of mapping.components) nameToComponent.set(c.name, c);
     const nameToSet = /* @__PURE__ */ new Map();
-    for (const s of mapping.componentSets) nameToSet.set(s.name, s);
+    for (const mapping of mappings) {
+      for (const c of mapping.components) {
+        if (!nameToComponent.has(c.name)) nameToComponent.set(c.name, c);
+      }
+      for (const s of mapping.componentSets) {
+        if (!nameToSet.has(s.name)) nameToSet.set(s.name, s);
+      }
+    }
     const swapStrayThumbnailSent = /* @__PURE__ */ new Set();
     async function postSwapExcluded(inst, reason, category) {
       const groupKey = `${inst.name} ${reason}`;
@@ -480,13 +494,13 @@
           await handleScanLibrary();
           break;
         case "scan-swap":
-          if (msg.scope && msg.mapping) await handleScanSwap(msg.scope, msg.mapping);
+          if (msg.scope && msg.mappings) await handleScanSwap(msg.scope, msg.mappings);
           break;
         case "cancel-swap-scan":
           swapScanCancelled = true;
           break;
         case "save-swap-mapping-cache":
-          if (typeof msg.raw === "string") await figma.clientStorage.setAsync(SWAP_MAPPING_CACHE_KEY, msg.raw);
+          if (Array.isArray(msg.raws)) await figma.clientStorage.setAsync(SWAP_MAPPING_CACHE_KEY, msg.raws);
           break;
       }
     } catch (err) {

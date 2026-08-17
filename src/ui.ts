@@ -849,6 +849,7 @@ interface LibraryScanData {
     variantProps: Record<string, string[]>;
     children: { key: string; variantProperties: Record<string, string> }[];
   }[];
+  coverThumbnail?: string; // data URL。無ければチップ表示は頭文字アバターにフォールバック
 }
 
 let lastLibraryScanJson = "";
@@ -865,10 +866,13 @@ function onLibraryScanProgress(name: string, index: number, total: number): void
   ($("scanLibBusyFill").style as CSSStyleDeclaration).width = `${Math.round((index / total) * 100)}%`;
 }
 
-function onLibraryScanDone(data: LibraryScanData): void {
+function onLibraryScanDone(data: LibraryScanData, coverThumbnail?: Uint8Array): void {
   // 単体コンポーネントとコンポーネントセットは、スワップ対象の「差し替え単位」
   // としては同格なので合算した1つの数字だけ見せる（内訳はJSONプレビューで見れる）。
   $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
+  // カバー画像はcode.ts側からバイト列で来る（btoa等の変換はUI iframe側でしかできない
+  // ため）。data URLに変換してからJSONに埋め込み、コピーした対応表にそのまま含める。
+  if (coverThumbnail) data.coverThumbnail = dataUrlFromBytes(coverThumbnail);
   lastLibraryScanJson = JSON.stringify(data, null, 2);
   $("scanLibJsonPreview").textContent = lastLibraryScanJson;
   showScanLib("result");
@@ -904,9 +908,10 @@ $("scanLibCopyBtn").addEventListener("click", () => {
     });
 });
 
-/* ---- ライブラリスワップ: 対応表の貼り付け＋スキャン範囲＋スキャン開始 ----
-   スキャン結果（✅️/⚠️/🧭タブ）はまだ実装していない。ここではJSONを検証し、
-   有効ならscan-swapメッセージを送るところまで。 */
+/* ---- ライブラリスワップ: 複数ライブラリのチップ管理 ----
+   スワップ先ライブラリの公開リストを複数追加できる。＋ボタンで貼り付け
+   フォームを開き、有効なJSONなら「追加」でチップに変わる。名前が衝突した
+   場合は先に追加した方を優先する（§code.ts handleScanSwap参照）。 */
 $("swapPasteInfoBtn").addEventListener("click", () => $("swapPasteInfoOverlay").classList.remove("hidden"));
 $("swapPasteInfoClose").addEventListener("click", () => $("swapPasteInfoOverlay").classList.add("hidden"));
 $("swapPasteInfoOverlay").addEventListener("click", (e) => {
@@ -921,21 +926,79 @@ $("swapRadioGroup").addEventListener("change", (e) => {
   });
 });
 
-// 貼り付け内容をその場で検証する。問題があるときだけ赤字で知らせ、問題なければ
-// 何も表示しない。スキャンボタンは有効なリストが入っているときだけ押せる
-// （「読み込む」という別ステップは設けない）。
-let parsedSwapMapping: LibraryScanData | null = null;
+interface LibraryChipEntry {
+  raw: string; // クリップボードに保存する生JSON文字列（貼り付けられたまま）
+  data: LibraryScanData;
+}
+let addedLibraries: LibraryChipEntry[] = [];
 
-function validateSwapPaste(): void {
-  const raw = ($("swapPasteTextarea") as HTMLTextAreaElement).value.trim();
-  const statusEl = $("swapPasteStatus");
-  const scanBtn = $("swapScanBtn") as HTMLButtonElement;
+// カバー画像が無いライブラリの頭文字アバターの背景色。名前から決定的に選ぶ
+// （同じ名前なら毎回同じ色になり、再読み込みでちらつかない）。
+const LIBRARY_AVATAR_COLORS = ["#0c8ce9", "#a3690a", "#17915c", "#d1453b", "#7c5cff", "#0aa3a3"];
+function avatarColorFor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  return LIBRARY_AVATAR_COLORS[Math.abs(hash) % LIBRARY_AVATAR_COLORS.length];
+}
+
+function libraryChipHtml(entry: LibraryChipEntry, index: number): string {
+  const count = entry.data.components.length + entry.data.componentSets.length;
+  const coverInner = entry.data.coverThumbnail
+    ? `<img src="${entry.data.coverThumbnail}" alt="">`
+    : escapeHtml(entry.data.libraryName.slice(0, 2));
+  const coverStyle = entry.data.coverThumbnail ? "" : ` style="background:${avatarColorFor(entry.data.libraryName)};"`;
+  return `<div class="library-chip">
+    <span class="cover"${coverStyle}>${coverInner}</span>
+    <div class="info">
+      <div class="lib-name" title="${escapeHtml(entry.data.libraryName)}">${escapeHtml(entry.data.libraryName)}</div>
+      <div class="lib-meta">コンポーネント${count}</div>
+    </div>
+    <button class="remove-btn" data-remove-library="${index}" title="削除">✕</button>
+  </div>`;
+}
+
+function updateSwapScanButtonState(): void {
+  ($("swapScanBtn") as HTMLButtonElement).disabled = addedLibraries.length === 0;
+}
+
+function saveSwapMappingCache(): void {
+  post({ type: "save-swap-mapping-cache", raws: addedLibraries.map((e) => e.raw) });
+}
+
+function renderLibraryChips(): void {
+  $("swapLibraryChipList").innerHTML = addedLibraries.map((e, i) => libraryChipHtml(e, i)).join("");
+  document.querySelectorAll<HTMLButtonElement>("#swapLibraryChipList [data-remove-library]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.getAttribute("data-remove-library"));
+      addedLibraries.splice(idx, 1);
+      renderLibraryChips();
+      saveSwapMappingCache();
+    });
+  });
+  $("swapCollisionNote").classList.toggle("hidden", addedLibraries.length < 2);
+  updateSwapScanButtonState();
+}
+
+/* ---- ＋ライブラリを追加（貼り付けフォームの開閉） ---- */
+let pendingAddLibrary: LibraryScanData | null = null;
+let pendingAddLibraryRaw = "";
+
+function closeAddLibraryForm(): void {
+  $("swapAddLibraryForm").classList.add("hidden");
+  $("swapAddLibraryBtn").classList.remove("hidden");
+}
+
+function validateAddLibraryPaste(): void {
+  const raw = ($("swapAddLibraryTextarea") as HTMLTextAreaElement).value.trim();
+  const statusEl = $("swapAddLibraryStatus");
+  const confirmBtn = $("swapAddLibraryConfirm") as HTMLButtonElement;
+  pendingAddLibrary = null;
+  pendingAddLibraryRaw = "";
 
   if (!raw) {
     statusEl.textContent = "⚠ スワップ先ライブラリの公開リストを貼り付けてください";
     statusEl.className = "paste-status error";
-    scanBtn.disabled = true;
-    parsedSwapMapping = null;
+    confirmBtn.disabled = true;
     return;
   }
   let parsed: LibraryScanData | null = null;
@@ -947,33 +1010,72 @@ function validateSwapPaste(): void {
   if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
     statusEl.textContent = "⚠ スワップ先ライブラリの公開リストの形式が正しくありません";
     statusEl.className = "paste-status error";
-    scanBtn.disabled = true;
-    parsedSwapMapping = null;
+    confirmBtn.disabled = true;
+    return;
+  }
+  if (addedLibraries.some((e) => e.data.libraryName === parsed!.libraryName)) {
+    statusEl.textContent = `⚠ 「${parsed.libraryName}」は既に追加されています`;
+    statusEl.className = "paste-status error";
+    confirmBtn.disabled = true;
     return;
   }
   statusEl.textContent = "";
   statusEl.className = "paste-status";
-  scanBtn.disabled = false;
-  parsedSwapMapping = parsed;
-  // プラグイン再起動をまたいで思い出せるよう、有効な内容が入るたびに保存しておく。
-  post({ type: "save-swap-mapping-cache", raw });
+  confirmBtn.disabled = false;
+  pendingAddLibrary = parsed;
+  pendingAddLibraryRaw = raw;
 }
 
-$("swapPasteTextarea").addEventListener("input", validateSwapPaste);
+$("swapAddLibraryTextarea").addEventListener("input", validateAddLibraryPaste);
 
-// 前回有効だった対応表をキャッシュから復元する。テキストエリアが空の（まだ何も
-// 貼っていない）ときだけ埋める — 起動直後に貼り付け始めていた場合に上書きしない。
-function onSwapMappingCacheLoaded(raw: string): void {
-  const textarea = $("swapPasteTextarea") as HTMLTextAreaElement;
-  if (textarea.value.trim()) return;
-  textarea.value = raw;
-  validateSwapPaste();
+$("swapAddLibraryBtn").addEventListener("click", () => {
+  ($("swapAddLibraryTextarea") as HTMLTextAreaElement).value = "";
+  validateAddLibraryPaste();
+  $("swapAddLibraryForm").classList.remove("hidden");
+  $("swapAddLibraryBtn").classList.add("hidden");
+  ($("swapAddLibraryTextarea") as HTMLTextAreaElement).focus();
+});
+
+$("swapAddLibraryCancel").addEventListener("click", closeAddLibraryForm);
+
+$("swapAddLibraryConfirm").addEventListener("click", () => {
+  if (!pendingAddLibrary) return;
+  addedLibraries.push({ raw: pendingAddLibraryRaw, data: pendingAddLibrary });
+  pendingAddLibrary = null;
+  pendingAddLibraryRaw = "";
+  renderLibraryChips();
+  saveSwapMappingCache();
+  closeAddLibraryForm();
+});
+
+// 前回追加していたライブラリをキャッシュから復元する。チップリストが空の
+// ときだけ埋める — 起動直後に自分で追加し始めていた場合は上書きしない。
+function onSwapMappingCacheLoaded(raws: string[]): void {
+  if (addedLibraries.length > 0) return;
+  const restored: LibraryChipEntry[] = [];
+  for (const raw of raws) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.components) && Array.isArray(parsed.componentSets)) {
+        restored.push({ raw, data: parsed });
+      }
+    } catch {
+      // 壊れたキャッシュ内容は無視する
+    }
+  }
+  if (restored.length === 0) return;
+  addedLibraries = restored;
+  renderLibraryChips();
 }
 
 $("swapScanBtn").addEventListener("click", () => {
-  if (!parsedSwapMapping) return;
+  if (addedLibraries.length === 0) return;
   const checkedRadio = document.querySelector<HTMLInputElement>('input[name="swapscope"]:checked');
-  post({ type: "scan-swap", scope: checkedRadio ? checkedRadio.value : "selection", mapping: parsedSwapMapping });
+  post({
+    type: "scan-swap",
+    scope: checkedRadio ? checkedRadio.value : "selection",
+    mappings: addedLibraries.map((e) => e.data),
+  });
 });
 
 /* ---- ライブラリスワップ: スキャン結果画面（✅️/⚠️/🧭タブ） ----
@@ -1500,7 +1602,7 @@ window.onmessage = (event: MessageEvent) => {
       onLibraryScanProgress(msg.name, msg.index, msg.total);
       break;
     case "library-scan-done":
-      onLibraryScanDone(msg.data);
+      onLibraryScanDone(msg.data, msg.coverThumbnail);
       break;
     case "swap-scan-started":
       onSwapScanStarted(msg.total);
@@ -1542,7 +1644,7 @@ window.onmessage = (event: MessageEvent) => {
       onSwapLatestRemoved(msg.id);
       break;
     case "swap-mapping-cache-loaded":
-      onSwapMappingCacheLoaded(msg.raw);
+      onSwapMappingCacheLoaded(msg.raws);
       break;
     case "error":
       showToast(`エラー: ${msg.message}`);

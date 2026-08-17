@@ -288,6 +288,37 @@
   .paste-status { font-size: 10.5px; font-weight: 600; min-height: 14px; margin-top: -4px; }
   .paste-status.error { color: var(--danger); }
 
+  /* ---- ライブラリスワップ: 複数ライブラリのチップ管理 ---- */
+  .library-chip-list { display: flex; flex-direction: column; gap: 6px; }
+  .library-chip {
+    display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--panel-border);
+    border-radius: 8px; background: var(--row-hover);
+  }
+  .library-chip .cover {
+    width: 32px; height: 32px; border-radius: 6px; flex: none; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff;
+  }
+  .library-chip .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .library-chip .info { flex: 1; min-width: 0; }
+  .library-chip .lib-name { font-size: 11.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .library-chip .lib-meta { font-size: 9.5px; color: var(--text-faint); }
+  .library-chip .remove-btn {
+    width: 20px; height: 20px; border-radius: 50%; border: none; background: none; color: var(--text-faint);
+    cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; padding: 0; font-size: 12px;
+  }
+  .library-chip .remove-btn:hover { background: var(--divider); color: var(--danger); }
+  .add-library-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; border-radius: 8px;
+    border: 1.5px dashed var(--panel-border); background: none; color: var(--accent-strong); font-size: 11px;
+    font-weight: 700; cursor: pointer;
+  }
+  .add-library-btn:hover { background: var(--accent-bg); border-color: var(--accent); }
+  .collision-note {
+    display: flex; gap: 7px; padding: 9px 10px; border-radius: 8px; background: var(--warning-bg);
+    color: var(--warning-strong); font-size: 10px; line-height: 1.6;
+  }
+  .collision-note svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+
   /* ---- 該当なしタブ（❓️。内部では「迷子(stray)」と呼んでいる）---- */
   .stray-group-head {
     padding: 9px 14px 5px; font-size: 10.5px; font-weight: 700; color: var(--text-muted);
@@ -413,14 +444,30 @@
     </div>
 
     <div class="mode-pane hidden" id="swapApplyModePane">
-      <!-- スキャン結果（3タブ）は後続タスクで実装。ここは貼り付け＋スキャン範囲＋スキャン開始まで -->
       <div class="setup" id="swapPasteView">
         <div class="field-head">
           <span class="setup-label">スワップ先ライブラリの公開リスト</span>
           <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先ライブラリの公開リストについて">i</button>
         </div>
-        <textarea class="paste-area" id="swapPasteTextarea" spellcheck="false"></textarea>
-        <div class="paste-status" id="swapPasteStatus"></div>
+
+        <div class="library-chip-list" id="swapLibraryChipList"></div>
+
+        <button class="add-library-btn" id="swapAddLibraryBtn">＋ ライブラリを追加</button>
+
+        <div class="hidden" id="swapAddLibraryForm" style="display: flex; flex-direction: column; gap: 8px;">
+          <textarea class="paste-area" id="swapAddLibraryTextarea" spellcheck="false" placeholder="ライブラリスキャンでコピーした公開リストを貼り付け"></textarea>
+          <div class="paste-status" id="swapAddLibraryStatus"></div>
+          <div style="display: flex; gap: 8px;">
+            <button class="ghost-btn" id="swapAddLibraryCancel" style="flex: 1; justify-content: center;">キャンセル</button>
+            <button class="ghost-btn accent" id="swapAddLibraryConfirm" style="flex: 1; justify-content: center;" disabled>追加</button>
+          </div>
+        </div>
+
+        <div class="collision-note hidden" id="swapCollisionNote">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+          <span>複数のライブラリに同じ名前のコンポーネントがある場合、<b>先に追加した方</b>が優先されます。</span>
+        </div>
+
         <div class="setup-label">スキャン範囲</div>
         <div class="radio-group" id="swapRadioGroup">
           <label class="radio-option active" data-scope="selection">
@@ -1409,8 +1456,9 @@
     $("scanLibBusyStep").textContent = `${name} (${index} / ${total})`;
     $("scanLibBusyFill").style.width = `${Math.round(index / total * 100)}%`;
   }
-  function onLibraryScanDone(data) {
+  function onLibraryScanDone(data, coverThumbnail) {
     $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
+    if (coverThumbnail) data.coverThumbnail = dataUrlFromBytes(coverThumbnail);
     lastLibraryScanJson = JSON.stringify(data, null, 2);
     $("scanLibJsonPreview").textContent = lastLibraryScanJson;
     showScanLib("result");
@@ -1451,16 +1499,61 @@
       opt.classList.toggle("active", opt.getAttribute("data-scope") === target.value);
     });
   });
-  var parsedSwapMapping = null;
-  function validateSwapPaste() {
-    const raw = $("swapPasteTextarea").value.trim();
-    const statusEl = $("swapPasteStatus");
-    const scanBtn = $("swapScanBtn");
+  var addedLibraries = [];
+  var LIBRARY_AVATAR_COLORS = ["#0c8ce9", "#a3690a", "#17915c", "#d1453b", "#7c5cff", "#0aa3a3"];
+  function avatarColorFor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = hash * 31 + name.charCodeAt(i) | 0;
+    return LIBRARY_AVATAR_COLORS[Math.abs(hash) % LIBRARY_AVATAR_COLORS.length];
+  }
+  function libraryChipHtml(entry, index) {
+    const count = entry.data.components.length + entry.data.componentSets.length;
+    const coverInner = entry.data.coverThumbnail ? `<img src="${entry.data.coverThumbnail}" alt="">` : escapeHtml(entry.data.libraryName.slice(0, 2));
+    const coverStyle = entry.data.coverThumbnail ? "" : ` style="background:${avatarColorFor(entry.data.libraryName)};"`;
+    return `<div class="library-chip">
+    <span class="cover"${coverStyle}>${coverInner}</span>
+    <div class="info">
+      <div class="lib-name" title="${escapeHtml(entry.data.libraryName)}">${escapeHtml(entry.data.libraryName)}</div>
+      <div class="lib-meta">\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8${count}</div>
+    </div>
+    <button class="remove-btn" data-remove-library="${index}" title="\u524A\u9664">\u2715</button>
+  </div>`;
+  }
+  function updateSwapScanButtonState() {
+    $("swapScanBtn").disabled = addedLibraries.length === 0;
+  }
+  function saveSwapMappingCache() {
+    post({ type: "save-swap-mapping-cache", raws: addedLibraries.map((e) => e.raw) });
+  }
+  function renderLibraryChips() {
+    $("swapLibraryChipList").innerHTML = addedLibraries.map((e, i) => libraryChipHtml(e, i)).join("");
+    document.querySelectorAll("#swapLibraryChipList [data-remove-library]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-remove-library"));
+        addedLibraries.splice(idx, 1);
+        renderLibraryChips();
+        saveSwapMappingCache();
+      });
+    });
+    $("swapCollisionNote").classList.toggle("hidden", addedLibraries.length < 2);
+    updateSwapScanButtonState();
+  }
+  var pendingAddLibrary = null;
+  var pendingAddLibraryRaw = "";
+  function closeAddLibraryForm() {
+    $("swapAddLibraryForm").classList.add("hidden");
+    $("swapAddLibraryBtn").classList.remove("hidden");
+  }
+  function validateAddLibraryPaste() {
+    const raw = $("swapAddLibraryTextarea").value.trim();
+    const statusEl = $("swapAddLibraryStatus");
+    const confirmBtn = $("swapAddLibraryConfirm");
+    pendingAddLibrary = null;
+    pendingAddLibraryRaw = "";
     if (!raw) {
       statusEl.textContent = "\u26A0 \u30B9\u30EF\u30C3\u30D7\u5148\u30E9\u30A4\u30D6\u30E9\u30EA\u306E\u516C\u958B\u30EA\u30B9\u30C8\u3092\u8CBC\u308A\u4ED8\u3051\u3066\u304F\u3060\u3055\u3044";
       statusEl.className = "paste-status error";
-      scanBtn.disabled = true;
-      parsedSwapMapping = null;
+      confirmBtn.disabled = true;
       return;
     }
     let parsed = null;
@@ -1472,27 +1565,63 @@
     if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
       statusEl.textContent = "\u26A0 \u30B9\u30EF\u30C3\u30D7\u5148\u30E9\u30A4\u30D6\u30E9\u30EA\u306E\u516C\u958B\u30EA\u30B9\u30C8\u306E\u5F62\u5F0F\u304C\u6B63\u3057\u304F\u3042\u308A\u307E\u305B\u3093";
       statusEl.className = "paste-status error";
-      scanBtn.disabled = true;
-      parsedSwapMapping = null;
+      confirmBtn.disabled = true;
+      return;
+    }
+    if (addedLibraries.some((e) => e.data.libraryName === parsed.libraryName)) {
+      statusEl.textContent = `\u26A0 \u300C${parsed.libraryName}\u300D\u306F\u65E2\u306B\u8FFD\u52A0\u3055\u308C\u3066\u3044\u307E\u3059`;
+      statusEl.className = "paste-status error";
+      confirmBtn.disabled = true;
       return;
     }
     statusEl.textContent = "";
     statusEl.className = "paste-status";
-    scanBtn.disabled = false;
-    parsedSwapMapping = parsed;
-    post({ type: "save-swap-mapping-cache", raw });
+    confirmBtn.disabled = false;
+    pendingAddLibrary = parsed;
+    pendingAddLibraryRaw = raw;
   }
-  $("swapPasteTextarea").addEventListener("input", validateSwapPaste);
-  function onSwapMappingCacheLoaded(raw) {
-    const textarea = $("swapPasteTextarea");
-    if (textarea.value.trim()) return;
-    textarea.value = raw;
-    validateSwapPaste();
+  $("swapAddLibraryTextarea").addEventListener("input", validateAddLibraryPaste);
+  $("swapAddLibraryBtn").addEventListener("click", () => {
+    $("swapAddLibraryTextarea").value = "";
+    validateAddLibraryPaste();
+    $("swapAddLibraryForm").classList.remove("hidden");
+    $("swapAddLibraryBtn").classList.add("hidden");
+    $("swapAddLibraryTextarea").focus();
+  });
+  $("swapAddLibraryCancel").addEventListener("click", closeAddLibraryForm);
+  $("swapAddLibraryConfirm").addEventListener("click", () => {
+    if (!pendingAddLibrary) return;
+    addedLibraries.push({ raw: pendingAddLibraryRaw, data: pendingAddLibrary });
+    pendingAddLibrary = null;
+    pendingAddLibraryRaw = "";
+    renderLibraryChips();
+    saveSwapMappingCache();
+    closeAddLibraryForm();
+  });
+  function onSwapMappingCacheLoaded(raws) {
+    if (addedLibraries.length > 0) return;
+    const restored = [];
+    for (const raw of raws) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.components) && Array.isArray(parsed.componentSets)) {
+          restored.push({ raw, data: parsed });
+        }
+      } catch (e) {
+      }
+    }
+    if (restored.length === 0) return;
+    addedLibraries = restored;
+    renderLibraryChips();
   }
   $("swapScanBtn").addEventListener("click", () => {
-    if (!parsedSwapMapping) return;
+    if (addedLibraries.length === 0) return;
     const checkedRadio = document.querySelector('input[name="swapscope"]:checked');
-    post({ type: "scan-swap", scope: checkedRadio ? checkedRadio.value : "selection", mapping: parsedSwapMapping });
+    post({
+      type: "scan-swap",
+      scope: checkedRadio ? checkedRadio.value : "selection",
+      mappings: addedLibraries.map((e) => e.data)
+    });
   });
   function showSwap(name) {
     Object.keys(swapViews).forEach(
@@ -1945,7 +2074,7 @@
         onLibraryScanProgress(msg.name, msg.index, msg.total);
         break;
       case "library-scan-done":
-        onLibraryScanDone(msg.data);
+        onLibraryScanDone(msg.data, msg.coverThumbnail);
         break;
       case "swap-scan-started":
         onSwapScanStarted(msg.total);
@@ -1987,7 +2116,7 @@
         onSwapLatestRemoved(msg.id);
         break;
       case "swap-mapping-cache-loaded":
-        onSwapMappingCacheLoaded(msg.raw);
+        onSwapMappingCacheLoaded(msg.raws);
         break;
       case "error":
         showToast(`\u30A8\u30E9\u30FC: ${msg.message}`);

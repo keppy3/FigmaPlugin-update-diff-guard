@@ -19,14 +19,15 @@ figma.showUI(__html__, { width: 420, height: 660 });
 
 // ---- スワップ先ライブラリの公開リストの記憶（プラグイン再起動をまたいで保持） ----
 // clientStorageはユーザー×プラグイン単位で永続化される（ファイルではなく
-// このマシン・このFigmaアカウントに紐づく）。貼り付けたJSONをそのまま
-// 文字列で保存しておき、次回起動時に空欄なら自動で埋める。
+// このマシン・このFigmaアカウントに紐づく）。複数ライブラリを追加できるため、
+// 貼り付けた生JSON文字列の配列（追加した順）として保存し、次回起動時に
+// チップリストが空なら自動で復元する。
 const SWAP_MAPPING_CACHE_KEY = "swap-mapping-cache";
 
 (async () => {
   const cached = await figma.clientStorage.getAsync(SWAP_MAPPING_CACHE_KEY);
-  if (typeof cached === "string" && cached) {
-    post({ type: "swap-mapping-cache-loaded", raw: cached });
+  if (Array.isArray(cached) && cached.length) {
+    post({ type: "swap-mapping-cache-loaded", raws: cached });
   }
 })();
 
@@ -461,6 +462,7 @@ interface LibraryScanData {
   exportedAt: string;
   components: LibraryComponentEntry[];
   componentSets: LibraryComponentSetEntry[];
+  coverThumbnail?: string; // data URL。ui.ts側でbytesから変換して埋め込む（§handleScanLibrary参照）
 }
 
 // 別のコンポーネント（またはコンポーネントセット）の内部に埋め込まれている
@@ -540,7 +542,22 @@ async function handleScanLibrary(): Promise<void> {
     components,
     componentSets,
   };
-  post({ type: "library-scan-done", data });
+
+  // このファイルに「ファイルのサムネイル」として明示的に指定されたノードが
+  // あれば、その実画像をカバーアートとしてui.ts側に渡す（Figmaのファイル
+  // ブラウザに出る自動生成サムネイルそのものはPlugin APIから取得できないので、
+  // 代替としてこれを使う。指定がなければnullが返り、カバーなしになる）。
+  let coverThumbnail: Uint8Array | undefined;
+  try {
+    const thumbNode = await figma.getFileThumbnailNodeAsync();
+    if (thumbNode) {
+      coverThumbnail = await thumbNode.exportAsync({ format: "PNG", constraint: { type: "WIDTH", value: 64 } });
+    }
+  } catch {
+    // カバー画像は無くても致命的ではないので、取得失敗時は単に付けない
+  }
+
+  post({ type: "library-scan-done", data, coverThumbnail });
 }
 
 // ---- ライブラリスワップ（貼り付けられた対応表との名前/バリアントマッチング） ----
@@ -592,13 +609,21 @@ function resolveSwapTarget(
   return { key: comp.key };
 }
 
-async function handleScanSwap(scope: ScopeMode, mapping: LibraryScanData): Promise<void> {
+async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Promise<void> {
   swapScanCancelled = false;
 
+  // 複数ライブラリを一度に追加できる。名前が衝突した場合は「先に追加した方」が
+  // 優先されるよう、既にキーが入っていたら上書きしない（mappingsは追加順の配列）。
   const nameToComponent = new Map<string, LibraryComponentEntry>();
-  for (const c of mapping.components) nameToComponent.set(c.name, c);
   const nameToSet = new Map<string, LibraryComponentSetEntry>();
-  for (const s of mapping.componentSets) nameToSet.set(s.name, s);
+  for (const mapping of mappings) {
+    for (const c of mapping.components) {
+      if (!nameToComponent.has(c.name)) nameToComponent.set(c.name, c);
+    }
+    for (const s of mapping.componentSets) {
+      if (!nameToSet.has(s.name)) nameToSet.set(s.name, s);
+    }
+  }
 
   // 迷子は同名・同理由のインスタンスが大量に並びがち（ui.ts側で名前＋理由単位に
   // まとめて表示する）。サムネイルもグループにつき1回だけ取得すれば十分なので、
@@ -711,8 +736,8 @@ interface IncomingMessage {
   ids?: string[];
   jump?: boolean;
   removeLatest?: boolean;
-  mapping?: LibraryScanData;
-  raw?: string;
+  mappings?: LibraryScanData[];
+  raws?: string[];
 }
 
 figma.ui.onmessage = async (msg: IncomingMessage) => {
@@ -752,13 +777,13 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         await handleScanLibrary();
         break;
       case "scan-swap":
-        if (msg.scope && msg.mapping) await handleScanSwap(msg.scope, msg.mapping);
+        if (msg.scope && msg.mappings) await handleScanSwap(msg.scope, msg.mappings);
         break;
       case "cancel-swap-scan":
         swapScanCancelled = true;
         break;
       case "save-swap-mapping-cache":
-        if (typeof msg.raw === "string") await figma.clientStorage.setAsync(SWAP_MAPPING_CACHE_KEY, msg.raw);
+        if (Array.isArray(msg.raws)) await figma.clientStorage.setAsync(SWAP_MAPPING_CACHE_KEY, msg.raws);
         break;
     }
   } catch (err) {
