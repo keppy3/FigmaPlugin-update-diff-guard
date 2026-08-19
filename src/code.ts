@@ -522,27 +522,35 @@ async function handleScanLibrary(): Promise<void> {
   const components: LibraryComponentEntry[] = [];
   const componentSets: LibraryComponentSetEntry[] = [];
 
-  const pages = figma.root.children;
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
+  // フェーズ1: 全ページを読み込み、対象候補（同期フィルタ済み）を先に集めきる。
+  // ここで初めて本当の合計数がわかる。以前はページ数を分母にしていたが、
+  // ライブラリファイルはページ数が少ない（1ページに全部、等）ことが多く、
+  // その場合プログレスバーがほぼ一瞬で100%に達したあと、実際に時間のかかる
+  // フェーズ2（ノードごとに非同期のgetPublishStatusAsync）の間ずっと止まって
+  // 見えるのが実害だった。findAllWithCriteria自体は同期なので、この集計
+  // フェーズは軽い。
+  const candidates: (ComponentNode | ComponentSetNode)[] = [];
+  for (const page of figma.root.children) {
     await page.loadAsync();
-    post({ type: "library-scan-progress", name: page.name, index: i + 1, total: pages.length });
-
     const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
+    for (const node of found) {
+      if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") continue; // セット側でchildrenとして拾い済み
+      if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
+      candidates.push(node);
+    }
+  }
 
-    // 同期で判定できるフィルタ（他コンポーネントの内部実装／セットの子バリアント）
-    // を先にかけてから、getPublishStatusAsync（ノードごとに非同期）が必要な残りだけ
-    // Promise.allでまとめて待つ。逐次awaitだと、コンポーネント数の多いページで
-    // プログレスバーが長時間止まって見える原因になっていた（1ページ分の判定が
-    // 全部終わるまで次のlibrary-scan-progressが送れないため）。
-    const candidates = found.filter((node) => {
-      if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") return false; // セット側でchildrenとして拾い済み
-      if (hasComponentAncestor(node)) return false; // 他コンポーネントの内部実装
-      return true;
-    });
-    const statuses = await Promise.all(candidates.map((node) => node.getPublishStatusAsync()));
+  // フェーズ2: 候補をバッチに分け、バッチごとにgetPublishStatusAsyncをまとめて
+  // 待ちつつ進捗を送る。全件を一度にPromise.allすると（それ自体は速いが）
+  // 完了するまで一切進捗が出せないので、体感の滑らかさのためにバッチ分割する。
+  const BATCH_SIZE = 30;
+  let processed = 0;
+  post({ type: "library-scan-progress", name: "コンポーネントを確認中", index: 0, total: candidates.length });
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
 
-    candidates.forEach((node, idx) => {
+    batch.forEach((node, idx) => {
       // Publish対象のコンポーネントを組み立てるための未公開ベースコンポーネント
       // （そのファイル内でしか使わないローカル部品）を除外する。CURRENT/CHANGEDは
       // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
@@ -567,6 +575,9 @@ async function handleScanLibrary(): Promise<void> {
         components.push({ name: node.name, key: node.key, path: nodePath(node) });
       }
     });
+
+    processed += batch.length;
+    post({ type: "library-scan-progress", name: "コンポーネントを確認中", index: processed, total: candidates.length });
   }
 
   const data: LibraryScanData = {

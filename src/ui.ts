@@ -893,7 +893,7 @@ $("scanLibStartBtn").addEventListener("click", () => {
 
 function onLibraryScanProgress(name: string, index: number, total: number): void {
   $("scanLibBusyStep").textContent = `${name} (${index} / ${total})`;
-  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = `${Math.round((index / total) * 100)}%`;
+  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = total ? `${Math.round((index / total) * 100)}%` : "0%";
 }
 
 function onLibraryScanDone(data: LibraryScanData, coverThumbnail?: Uint8Array): void {

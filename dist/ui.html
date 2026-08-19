@@ -1533,7 +1533,7 @@
   });
   function onLibraryScanProgress(name, index, total) {
     $("scanLibBusyStep").textContent = `${name} (${index} / ${total})`;
-    $("scanLibBusyFill").style.width = `${Math.round(index / total * 100)}%`;
+    $("scanLibBusyFill").style.width = total ? `${Math.round(index / total * 100)}%` : "0%";
   }
   function onLibraryScanDone(data, coverThumbnail) {
     $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
