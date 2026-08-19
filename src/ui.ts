@@ -891,9 +891,13 @@ $("scanLibStartBtn").addEventListener("click", () => {
   post({ type: "scan-library" });
 });
 
-function onLibraryScanProgress(name: string, index: number, total: number): void {
-  $("scanLibBusyStep").textContent = `${name} (${index} / ${total})`;
-  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = total ? `${Math.round((index / total) * 100)}%` : "0%";
+// ファイル全体のPublish済みコンポーネント数を事前に取得するAPIが無いため、
+// 固定の分母を持つ%表示はできない。「見つかった件数」「確認済み件数」という
+// 伸びていく2つのカウンタをそのまま数字で見せることで、進捗が止まって見える
+// ことなく、実際に処理が進んでいることを伝える（§code.ts handleScanLibrary参照）。
+function onLibraryScanProgress(found: number, scanned: number): void {
+  $("scanLibBusyStep").textContent = `${scanned} / ${found} 件を確認済み`;
+  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = found ? `${Math.round((scanned / found) * 100)}%` : "0%";
 }
 
 function onLibraryScanDone(data: LibraryScanData, coverThumbnail?: Uint8Array): void {
@@ -1746,7 +1750,7 @@ window.onmessage = (event: MessageEvent) => {
       setMarkerCount(msg.count);
       break;
     case "library-scan-progress":
-      onLibraryScanProgress(msg.name, msg.index, msg.total);
+      onLibraryScanProgress(msg.found, msg.scanned);
       break;
     case "library-scan-done":
       onLibraryScanDone(msg.data, msg.coverThumbnail);

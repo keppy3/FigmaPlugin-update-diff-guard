@@ -1531,9 +1531,9 @@
     $("scanLibBusyFill").style.width = "0%";
     post({ type: "scan-library" });
   });
-  function onLibraryScanProgress(name, index, total) {
-    $("scanLibBusyStep").textContent = `${name} (${index} / ${total})`;
-    $("scanLibBusyFill").style.width = total ? `${Math.round(index / total * 100)}%` : "0%";
+  function onLibraryScanProgress(found, scanned) {
+    $("scanLibBusyStep").textContent = `${scanned} / ${found} \u4EF6\u3092\u78BA\u8A8D\u6E08\u307F`;
+    $("scanLibBusyFill").style.width = found ? `${Math.round(scanned / found * 100)}%` : "0%";
   }
   function onLibraryScanDone(data, coverThumbnail) {
     $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
@@ -2237,7 +2237,7 @@
         setMarkerCount(msg.count);
         break;
       case "library-scan-progress":
-        onLibraryScanProgress(msg.name, msg.index, msg.total);
+        onLibraryScanProgress(msg.found, msg.scanned);
         break;
       case "library-scan-done":
         onLibraryScanDone(msg.data, msg.coverThumbnail);

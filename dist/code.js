@@ -313,49 +313,51 @@
     return parts.join(" / ");
   }
   async function handleScanLibrary() {
-    var _a;
     const components = [];
     const componentSets = [];
-    const candidates = [];
+    const BATCH_SIZE = 30;
+    let found = 0;
+    let scanned = 0;
+    post({ type: "library-scan-progress", found, scanned });
     for (const page of figma.root.children) {
       await page.loadAsync();
-      const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
-      for (const node of found) {
-        if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") continue;
-        if (hasComponentAncestor(node)) continue;
-        candidates.push(node);
-      }
-    }
-    const BATCH_SIZE = 30;
-    let processed = 0;
-    post({ type: "library-scan-progress", name: "\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u3092\u78BA\u8A8D\u4E2D", index: 0, total: candidates.length });
-    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-      const batch = candidates.slice(i, i + BATCH_SIZE);
-      const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
-      batch.forEach((node, idx) => {
-        if (statuses[idx] === "UNPUBLISHED") return;
-        if (node.type === "COMPONENT_SET") {
-          const variantProps = {};
-          for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
-            variantProps[prop] = info.values;
-          }
-          componentSets.push({
-            name: node.name,
-            key: node.key,
-            path: nodePath(node),
-            variantProps,
-            children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
-              var _a2;
-              return { key: c.key, variantProperties: (_a2 = c.variantProperties) != null ? _a2 : {} };
-            }),
-            defaultVariantKey: node.defaultVariant.key
-          });
-        } else if (node.type === "COMPONENT") {
-          components.push({ name: node.name, key: node.key, path: nodePath(node) });
-        }
+      const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
+      const candidates = pageFound.filter((node) => {
+        var _a;
+        if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") return false;
+        if (hasComponentAncestor(node)) return false;
+        return true;
       });
-      processed += batch.length;
-      post({ type: "library-scan-progress", name: "\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u3092\u78BA\u8A8D\u4E2D", index: processed, total: candidates.length });
+      found += candidates.length;
+      post({ type: "library-scan-progress", found, scanned });
+      for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        const batch = candidates.slice(i, i + BATCH_SIZE);
+        const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
+        batch.forEach((node, idx) => {
+          if (statuses[idx] === "UNPUBLISHED") return;
+          if (node.type === "COMPONENT_SET") {
+            const variantProps = {};
+            for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
+              variantProps[prop] = info.values;
+            }
+            componentSets.push({
+              name: node.name,
+              key: node.key,
+              path: nodePath(node),
+              variantProps,
+              children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
+                var _a;
+                return { key: c.key, variantProperties: (_a = c.variantProperties) != null ? _a : {} };
+              }),
+              defaultVariantKey: node.defaultVariant.key
+            });
+          } else if (node.type === "COMPONENT") {
+            components.push({ name: node.name, key: node.key, path: nodePath(node) });
+          }
+        });
+        scanned += batch.length;
+        post({ type: "library-scan-progress", found, scanned });
+      }
     }
     const data = {
       libraryName: figma.root.name,

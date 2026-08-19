@@ -522,62 +522,68 @@ async function handleScanLibrary(): Promise<void> {
   const components: LibraryComponentEntry[] = [];
   const componentSets: LibraryComponentSetEntry[] = [];
 
-  // フェーズ1: 全ページを読み込み、対象候補（同期フィルタ済み）を先に集めきる。
-  // ここで初めて本当の合計数がわかる。以前はページ数を分母にしていたが、
-  // ライブラリファイルはページ数が少ない（1ページに全部、等）ことが多く、
-  // その場合プログレスバーがほぼ一瞬で100%に達したあと、実際に時間のかかる
-  // フェーズ2（ノードごとに非同期のgetPublishStatusAsync）の間ずっと止まって
-  // 見えるのが実害だった。findAllWithCriteria自体は同期なので、この集計
-  // フェーズは軽い。
-  const candidates: (ComponentNode | ComponentSetNode)[] = [];
+  // Figmaには「このファイルにPublish済みコンポーネントが何件あるか」を事前に
+  // 一発で返すAPIが無い（Web版Analyticsのような集計は取れない）ので、真の
+  // 合計は最後のページを走査し終わるまで確定しない。よって進捗は固定の分母
+  // を持つ%バーではなく、「見つかった件数（found）」と「確認済み件数
+  // （scanned）」という2つの伸びていくカウンタとして扱う。
+  //
+  // 以前はfindAllWithCriteria→getPublishStatusAsyncの2フェーズに分け、全ページの
+  // 走査（page.loadAsync含む）を終えてから初めて進捗を送っていたが、ページ数の
+  // 多いファイルではそのページ走査自体に時間がかかり、最初の進捗が出るまで
+  // ずっと0%表示のまま止まって見えるという逆の問題を生んでいた。ページ単位の
+  // 探索とバッチ単位の確認、両方の完了ごとに進捗を送ることで、常にどちらかの
+  // カウンタが動き続けるようにする。
+  const BATCH_SIZE = 30;
+  let found = 0;
+  let scanned = 0;
+  post({ type: "library-scan-progress", found, scanned });
+
   for (const page of figma.root.children) {
     await page.loadAsync();
-    const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
-    for (const node of found) {
-      if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") continue; // セット側でchildrenとして拾い済み
-      if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
-      candidates.push(node);
-    }
-  }
-
-  // フェーズ2: 候補をバッチに分け、バッチごとにgetPublishStatusAsyncをまとめて
-  // 待ちつつ進捗を送る。全件を一度にPromise.allすると（それ自体は速いが）
-  // 完了するまで一切進捗が出せないので、体感の滑らかさのためにバッチ分割する。
-  const BATCH_SIZE = 30;
-  let processed = 0;
-  post({ type: "library-scan-progress", name: "コンポーネントを確認中", index: 0, total: candidates.length });
-  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-    const batch = candidates.slice(i, i + BATCH_SIZE);
-    const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
-
-    batch.forEach((node, idx) => {
-      // Publish対象のコンポーネントを組み立てるための未公開ベースコンポーネント
-      // （そのファイル内でしか使わないローカル部品）を除外する。CURRENT/CHANGEDは
-      // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
-      if (statuses[idx] === "UNPUBLISHED") return;
-
-      if (node.type === "COMPONENT_SET") {
-        const variantProps: Record<string, string[]> = {};
-        for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
-          variantProps[prop] = info.values;
-        }
-        componentSets.push({
-          name: node.name,
-          key: node.key,
-          path: nodePath(node),
-          variantProps,
-          children: node.children
-            .filter((c): c is ComponentNode => c.type === "COMPONENT")
-            .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
-          defaultVariantKey: node.defaultVariant.key,
-        });
-      } else if (node.type === "COMPONENT") {
-        components.push({ name: node.name, key: node.key, path: nodePath(node) });
-      }
+    const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
+    const candidates = pageFound.filter((node) => {
+      if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") return false; // セット側でchildrenとして拾い済み
+      if (hasComponentAncestor(node)) return false; // 他コンポーネントの内部実装
+      return true;
     });
 
-    processed += batch.length;
-    post({ type: "library-scan-progress", name: "コンポーネントを確認中", index: processed, total: candidates.length });
+    found += candidates.length;
+    post({ type: "library-scan-progress", found, scanned }); // ページを読み込んだ時点でまずfoundだけ更新
+
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+      const batch = candidates.slice(i, i + BATCH_SIZE);
+      const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
+
+      batch.forEach((node, idx) => {
+        // Publish対象のコンポーネントを組み立てるための未公開ベースコンポーネント
+        // （そのファイル内でしか使わないローカル部品）を除外する。CURRENT/CHANGEDは
+        // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
+        if (statuses[idx] === "UNPUBLISHED") return;
+
+        if (node.type === "COMPONENT_SET") {
+          const variantProps: Record<string, string[]> = {};
+          for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
+            variantProps[prop] = info.values;
+          }
+          componentSets.push({
+            name: node.name,
+            key: node.key,
+            path: nodePath(node),
+            variantProps,
+            children: node.children
+              .filter((c): c is ComponentNode => c.type === "COMPONENT")
+              .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
+            defaultVariantKey: node.defaultVariant.key,
+          });
+        } else if (node.type === "COMPONENT") {
+          components.push({ name: node.name, key: node.key, path: nodePath(node) });
+        }
+      });
+
+      scanned += batch.length;
+      post({ type: "library-scan-progress", found, scanned });
+    }
   }
 
   const data: LibraryScanData = {
