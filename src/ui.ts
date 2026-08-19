@@ -899,11 +899,11 @@ $("scanLibStartBtn").addEventListener("click", () => {
 // 正確な分母を持てる（§code.ts handleScanLibrary参照）。
 // 上段＝スキャン済みページ数／全ページ、下段＝確認済み／今のページの候補数。
 function onLibraryScanProgress(pagesCompleted: number, totalPages: number, pageScanned: number, pageTotal: number): void {
-  $("scanLibPageStep").textContent = `ページ ${pagesCompleted} / ${totalPages}`;
+  $("scanLibPageStep").textContent = `スキャン済みページ ${pagesCompleted} / ${totalPages}`;
   ($("scanLibPageFill").style as CSSStyleDeclaration).width = totalPages
     ? `${Math.round((pagesCompleted / totalPages) * 100)}%`
     : "0%";
-  $("scanLibCompStep").textContent = `メインコンポーネント ${pageScanned} / ${pageTotal}`;
+  $("scanLibCompStep").textContent = `スキャン済みのメインコンポーネント ${pageScanned} / ${pageTotal}`;
   ($("scanLibCompFill").style as CSSStyleDeclaration).width = pageTotal ? `${Math.round((pageScanned / pageTotal) * 100)}%` : "0%";
 }
 

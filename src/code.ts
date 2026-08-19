@@ -207,35 +207,58 @@ async function runScan(scope: ScopeMode): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
+// resolvedVariableModes解決のたびにfigma.variables.getVariableCollectionByIdAsync
+// を呼ぶと同じコレクションを何度も引き直すことになるので、スキャン全体で使い回す。
+const variableCollectionCache = new Map<string, VariableCollection | null>();
+async function getCachedVariableCollection(id: string): Promise<VariableCollection | null> {
+  if (variableCollectionCache.has(id)) return variableCollectionCache.get(id) ?? null;
+  let collection: VariableCollection | null = null;
+  try {
+    collection = await figma.variables.getVariableCollectionByIdAsync(id);
+  } catch {
+    collection = null;
+  }
+  variableCollectionCache.set(id, collection);
+  return collection;
+}
+
 async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, resultType: string): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // 比較用クローンは実際の親の直下・同じ位置に挿入する（比較用インスタンスを
-  // 配置＝placeLatestOneと同じ考え方）。かつて「ページ直下に逃がす」方式に
-  // 変えたのは、同一親+一致するx/yを試したときAuto Layout親でレイアウトが
-  // 動いて見えた／layoutPositioning="ABSOLUTE"を足したら非Auto Layout親で
-  // 例外、という2つの実害があったため。ただし実際の親から切り離すと、親や
-  // インスタンス自身に設定された変数モード（Day/Night・画面サイズ等）が継承
-  // されず、それが原因の誤差分／見逃しが起きていた。要件（実アピアランスの
-  // 再現）と処理速度を優先し、レイアウトが一瞬動いて見えることは許容した上で
-  // 実際の親に戻す。layoutPositioning="ABSOLUTE"は使わない（非Auto Layout親
-  // で例外になるため）ので、Auto Layout親では完全な重なりまでは保証しない。
+  // 比較用クローンの置き場所の変遷（ページ規模のスキャンで壊れないことを最優先
+  // に決めた）:
+  //   1. ページ直下に逃がす（最初の実装）— 軽いが、親のDay/Night等の変数
+  //      モードを継承できず誤差分の原因になっていた。
+  //   2. 実際の親に挿入（一時期の実装）— 見た目の重なりと変数モード継承は
+  //      正しくなったが、ページ規模のスキャンで大量のインスタンスに対して
+  //      繰り返すと、Auto Layout親のレイアウト再計算が都度走り、実機で
+  //      Figmaクライアントが「Something went wrong」で落ちる実害が出た。
+  //   3. 現在: ページ直下に置く軽さを保ったまま、instanceが実際に解決していた
+  //      モード（inst.resolvedVariableModes — 祖先からの継承分・インスタンス
+  //      自身の明示オーバーライド分の両方を合成済み）を、書き出し用の
+  //      使い捨てアンカーフレームに明示指定として複製する。物理的に実階層へ
+  //      再ネストしなくても、見た目上は同じ状態を安全に再現できる。
+  const anchor = figma.createFrame();
+  anchor.name = "Update Diff Guard — diff sandbox";
+  anchor.fills = [];
+  anchor.clipsContent = false; // ページ直下と同じく何もクリップしない（影等のはみ出しを含め従来通り書き出す）
+  (findOwningPage(inst) ?? figma.currentPage).appendChild(anchor);
+  anchor.x = 0;
+  anchor.y = 0;
+
+  const resolvedModes = inst.resolvedVariableModes;
+  for (const collectionId of Object.keys(resolvedModes)) {
+    const collection = await getCachedVariableCollection(collectionId);
+    if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
+  }
+
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  const parent = inst.parent;
-  if (parent && "insertChild" in parent) {
-    const originalIndex = parent.children.indexOf(inst);
-    parent.insertChild(originalIndex + 1, clone);
-    clone.x = inst.x;
-    clone.y = inst.y;
-  } else {
-    // 親が取得できない/挿入不可な稀なケースのみ、従来通りページ直下に逃がす。
-    (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
-    clone.x = 0;
-    clone.y = 0;
-  }
+  anchor.appendChild(clone);
+  clone.x = 0;
+  clone.y = 0;
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
@@ -256,10 +279,9 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, res
       after: afterBytes,
     });
   } finally {
-    // Guaranteed even if exportAsync throws above — otherwise a failed
-    // export would leave this "(diff candidate)" node stranded on the
-    // canvas instead of just excluding the instance from results.
-    clone.remove();
+    // anchorごと削除すればcloneも道連れになる。exportAsyncが投げても、失敗した
+    // 候補ノードをキャンバスに残さず片付けられる（比較中エラー扱いになるだけ）。
+    anchor.remove();
   }
 }
 

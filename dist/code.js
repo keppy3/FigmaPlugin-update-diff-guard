@@ -124,24 +124,41 @@
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
+  var variableCollectionCache = /* @__PURE__ */ new Map();
+  async function getCachedVariableCollection(id) {
+    var _a;
+    if (variableCollectionCache.has(id)) return (_a = variableCollectionCache.get(id)) != null ? _a : null;
+    let collection = null;
+    try {
+      collection = await figma.variables.getVariableCollectionByIdAsync(id);
+    } catch (e) {
+      collection = null;
+    }
+    variableCollectionCache.set(id, collection);
+    return collection;
+  }
   async function computeAndSendDiff(inst, latest, resultType) {
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+    const anchor = figma.createFrame();
+    anchor.name = "Update Diff Guard \u2014 diff sandbox";
+    anchor.fills = [];
+    anchor.clipsContent = false;
+    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(anchor);
+    anchor.x = 0;
+    anchor.y = 0;
+    const resolvedModes = inst.resolvedVariableModes;
+    for (const collectionId of Object.keys(resolvedModes)) {
+      const collection = await getCachedVariableCollection(collectionId);
+      if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
+    }
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
-    const parent = inst.parent;
-    if (parent && "insertChild" in parent) {
-      const originalIndex = parent.children.indexOf(inst);
-      parent.insertChild(originalIndex + 1, clone);
-      clone.x = inst.x;
-      clone.y = inst.y;
-    } else {
-      ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
-      clone.x = 0;
-      clone.y = 0;
-    }
+    anchor.appendChild(clone);
+    clone.x = 0;
+    clone.y = 0;
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     try {
@@ -155,7 +172,7 @@
         after: afterBytes
       });
     } finally {
-      clone.remove();
+      anchor.remove();
     }
   }
   function cleanupWrapper(id) {
