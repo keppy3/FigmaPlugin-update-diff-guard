@@ -85,6 +85,11 @@ interface SwapStrayGroup {
 const swapRows = new Map<string, RowData>();
 let swapCleanIds: string[] = [];
 let swapDiffIds: string[] = [];
+// バリアント名不一致だが、コンポーネントセット自体は見つかったため、Figma純正の
+// ライブラリスワップに倣ってデフォルトバリアントを暫定の差し替え先として提示する
+// 項目。見た目差分ありタブと同じ行UI・操作（このままスワップ／比較用インスタンス
+// 配置）を持つが、自動選択である旨を毎回明示するため独立したタブに分けている。
+let swapVariantIds: string[] = [];
 const swapStrayGroups = new Map<string, SwapStrayGroup>(); // key: `${name} ${reason}`
 const swapChecked: Record<string, boolean> = {};
 const swapLatestVisible: Record<string, boolean> = {};
@@ -92,7 +97,7 @@ let swapScanning = false;
 let swapScanTotal = 0;
 let swapScanDone = 0;
 const swapExpandedIds: Record<string, boolean> = {};
-let swapLastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
+let swapLastClickedIndex: { tab: "clean" | "diff" | "variant"; index: number } | null = null;
 const swapViews = { paste: $("swapPasteView"), busy: $("swapBulkBusyView"), result: $("swapResultView") };
 
 function post(msg: Record<string, unknown>): void {
@@ -1118,6 +1123,7 @@ function resetSwapToPaste(): void {
   swapRows.clear();
   swapCleanIds = [];
   swapDiffIds = [];
+  swapVariantIds = [];
   swapStrayGroups.clear();
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1135,6 +1141,7 @@ function onSwapScanStarted(total: number): void {
   swapRows.clear();
   swapCleanIds = [];
   swapDiffIds = [];
+  swapVariantIds = [];
   swapStrayGroups.clear();
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1185,6 +1192,24 @@ async function onSwapScanItemResult(msg: ScanItemMsg): Promise<void> {
   } else {
     swapDiffIds.push(row.id);
   }
+  swapChecked[row.id] = true;
+  swapScanDone++;
+  updateSwapScanProgress();
+  renderSwapTabs(row.id);
+}
+
+// バリアント不一致タブ: デフォルトバリアントへの自動フォールバックは常に明示
+// 確認を求めたいので、ピクセル完全一致（processDiffの"clean"判定）でも
+// 見た目差分ありタブ相当の2枚並び表示に揃える（同じ画像を両側に出す）。
+async function onSwapScanItemVariantResult(msg: ScanItemMsg): Promise<void> {
+  const row = await processDiff(msg);
+  swapRows.set(
+    row.id,
+    row.status === "clean"
+      ? { id: row.id, name: row.name, status: "diff", diffPercent: 0, currentUrl: row.imageUrl, latestUrl: row.imageUrl }
+      : row
+  );
+  swapVariantIds.push(row.id);
   swapChecked[row.id] = true;
   swapScanDone++;
   updateSwapScanProgress();
@@ -1273,6 +1298,39 @@ function swapDiffRowHtml(id: string, justEntered: boolean): string {
   </details>`;
 }
 
+/* ---- ライブラリスワップ: バリアント不一致タブ ----
+   コンポーネントセット名は一致するがバリアントの組み合わせが無いケース。
+   Figma純正のライブラリスワップに倣い、そのセットのデフォルトバリアントを
+   暫定の差し替え先として提示する。自動選択である旨を毎回明示するため、行の
+   ボタン構成は見た目差分ありタブ（swapDiffRowButtons）をそのまま流用しつつ、
+   説明文を追加している。 */
+function swapVariantRowHtml(id: string, justEntered: boolean): string {
+  const row = swapRows.get(id);
+  if (!row) return "";
+  const latestLabel = row.sizeMismatch
+    ? "デフォルトバリアント（サイズ不一致）"
+    : `デフォルトバリアント（差分${(row.diffPercent ?? 0).toFixed(1)}%）`;
+  const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
+  const miniThumb = `<img class="row-mini-thumb" src="${row.currentUrl || ""}" alt="">`;
+  return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
+    <summary class="row-summary">
+      ${checkbox}
+      ${miniThumb}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="row-detail">
+      <div class="variant-note">このコンポーネントセットの既定バリアントに差し替えます。見た目を確認してから実行してください。</div>
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">${latestLabel}</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
+      </div>
+      ${swapDiffRowButtons(id)}
+    </div>
+  </details>`;
+}
+
 /* ---- ライブラリスワップ: 名前不一致タブ ----
    同名・同理由のインスタンスは1行にまとめ、件数とグループ代表1件分の
    サムネイル（あれば）だけを表示する。オーバーライドで個体差があっても
@@ -1331,14 +1389,17 @@ function renderSwapStray(): void {
   $("swapStrayList").innerHTML = html || '<div class="empty-state">名前不一致の項目はありません</div>';
 }
 
-function swapEmptyState(kind: "clean" | "diff"): string {
+function swapEmptyState(kind: "clean" | "diff" | "variant"): string {
   if (swapScanning) return '<div class="empty-state"><span class="spinner sm"></span>確認中…</div>';
-  return `<div class="empty-state">${kind === "clean" ? "見た目差分なしの項目はありません" : "見た目差分ありの項目はありません"}</div>`;
+  if (kind === "clean") return '<div class="empty-state">見た目差分なしの項目はありません</div>';
+  if (kind === "diff") return '<div class="empty-state">見た目差分ありの項目はありません</div>';
+  return '<div class="empty-state">バリアント不一致の項目はありません</div>';
 }
 
 function renderSwapTabs(justEnteredId?: string): void {
   $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
   $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
+  $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
   $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
 
   $("swapCleanList").innerHTML = swapCleanIds.length
@@ -1348,6 +1409,10 @@ function renderSwapTabs(justEnteredId?: string): void {
   $("swapDiffList").innerHTML = swapDiffIds.length
     ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("")
     : swapEmptyState("diff");
+
+  $("swapVariantList").innerHTML = swapVariantIds.length
+    ? swapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("")
+    : swapEmptyState("variant");
 
   renderSwapStray();
 
@@ -1414,8 +1479,8 @@ function wireSwapRowEvents(): void {
 /* ---- ライブラリスワップ: チェックボックス（Shift範囲選択） ---- */
 function handleSwapCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   const id = cb.getAttribute("data-id")!;
-  const tab: "clean" | "diff" = swapCleanIds.includes(id) ? "clean" : "diff";
-  const list = tab === "clean" ? swapCleanIds : swapDiffIds;
+  const tab: "clean" | "diff" | "variant" = swapCleanIds.includes(id) ? "clean" : swapDiffIds.includes(id) ? "diff" : "variant";
+  const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
   const index = list.indexOf(id);
   const newState = cb.checked;
 
@@ -1432,9 +1497,10 @@ function handleSwapCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
 }
 
 /* ---- ライブラリスワップ: すべて選択・すべて解除・すべて展開・すべて折りたたむ ---- */
-function bindSwapListToolbar(tab: "clean" | "diff"): void {
-  const list = tab === "clean" ? (): string[] => swapCleanIds : (): string[] => swapDiffIds;
-  const prefix = tab === "clean" ? "swapClean" : "swapDiff";
+function bindSwapListToolbar(tab: "clean" | "diff" | "variant"): void {
+  const list =
+    tab === "clean" ? (): string[] => swapCleanIds : tab === "diff" ? (): string[] => swapDiffIds : (): string[] => swapVariantIds;
+  const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
   $(`${prefix}SelectAll`).addEventListener("click", () => {
     list().forEach((id) => (swapChecked[id] = true));
     renderSwapTabs();
@@ -1454,6 +1520,7 @@ function bindSwapListToolbar(tab: "clean" | "diff"): void {
 }
 bindSwapListToolbar("clean");
 bindSwapListToolbar("diff");
+bindSwapListToolbar("variant");
 
 function updateSwapFooterButtons(): void {
   const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
@@ -1479,6 +1546,24 @@ function updateSwapFooterButtons(): void {
   ($("swapCleanSelectCanvas") as HTMLButtonElement).disabled = cleanChecked === 0;
   ($("swapDiffSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${forceChecked})`;
   ($("swapDiffSelectCanvas") as HTMLButtonElement).disabled = forceChecked === 0;
+
+  // バリアント不一致タブ — 見た目差分ありタブと同じボタン構成（フッターも
+  // 独立して持たせている。§ui.html swapVariantタブパネル参照）。
+  const variantChecked = swapVariantIds.filter((id) => swapChecked[id]).length;
+  $("swapVariantForceBulkBtnLabel").textContent = `このまま一括スワップ(${variantChecked})`;
+  ($("swapVariantForceBulkBtn") as HTMLButtonElement).disabled = variantChecked === 0;
+
+  const variantPlaceableChecked = swapVariantIds.filter(
+    (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
+  ).length;
+  $("swapVariantPlaceBulkBtnLabel").textContent = `比較用インスタンスを一括配置(${variantPlaceableChecked})`;
+  ($("swapVariantPlaceBulkBtn") as HTMLButtonElement).disabled = variantPlaceableChecked === 0;
+
+  $("swapVariantClearAllBtnLabel").textContent = `比較用インスタンスをすべて削除(${markerCount})`;
+  ($("swapVariantClearAllBtn") as HTMLButtonElement).disabled = markerCount === 0;
+
+  ($("swapVariantSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${variantChecked})`;
+  ($("swapVariantSelectCanvas") as HTMLButtonElement).disabled = variantChecked === 0;
 }
 
 /* ---- ライブラリスワップ: 一括スワップ / 比較用インスタンスを一括配置 / このまま一括スワップ ---- */
@@ -1532,9 +1617,35 @@ $("swapDiffSelectCanvas").addEventListener("click", () => {
   post({ type: "select-on-canvas", ids: targets });
 });
 
+$("swapVariantForceBulkBtn").addEventListener("click", () => {
+  const targets = swapVariantIds.filter((id) => swapChecked[id]);
+  if (targets.length === 0) return;
+  openForceConfirm({ kind: "bulk", ids: targets, mode: "swap" });
+});
+
+$("swapVariantPlaceBulkBtn").addEventListener("click", () => {
+  const targets = swapVariantIds.filter(
+    (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
+  );
+  if (targets.length === 0) return;
+  showSwapBulkBusy("比較用インスタンスを配置しています");
+  post({ type: "place-latest-bulk", ids: targets });
+});
+
+$("swapVariantClearAllBtn").addEventListener("click", () => {
+  post({ type: "clear-markers" });
+});
+
+$("swapVariantSelectCanvas").addEventListener("click", () => {
+  const targets = swapVariantIds.filter((id) => swapChecked[id]);
+  if (targets.length === 0) return;
+  post({ type: "select-on-canvas", ids: targets });
+});
+
 function removeSwapResolvedId(id: string): void {
   swapCleanIds = swapCleanIds.filter((x) => x !== id);
   swapDiffIds = swapDiffIds.filter((x) => x !== id);
+  swapVariantIds = swapVariantIds.filter((x) => x !== id);
   swapRows.delete(id);
   delete swapChecked[id];
   delete swapLatestVisible[id];
@@ -1648,6 +1759,9 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "swap-scan-item-result":
       void onSwapScanItemResult(msg);
+      break;
+    case "swap-scan-item-variant-result":
+      void onSwapScanItemVariantResult(msg);
       break;
     case "swap-scan-done":
       onSwapScanFinished(false);

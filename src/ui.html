@@ -210,6 +210,12 @@
   .row-detail { padding: 0 14px 14px 37px; display: flex; flex-direction: column; gap: 10px; }
   .preview-row { display: flex; align-items: flex-start; gap: 10px; }
 
+  /* バリアント不一致タブ: デフォルトバリアントへ自動フォールバックしている旨の注記 */
+  .variant-note {
+    font-size: 10px; color: var(--warning-strong); background: var(--warning-bg);
+    border-radius: 6px; padding: 6px 9px; line-height: 1.5;
+  }
+
   .thumb-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; }
   .preview-frame { width: 120px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -533,6 +539,7 @@
         <div class="tabs">
           <button class="tab active" data-swaptab="clean">✅️ 見た目差分なし <span class="tab-count" id="swapCleanCount">(0)</span></button>
           <button class="tab" data-swaptab="diff">⚠️ 見た目差分あり <span class="tab-count" id="swapDiffCount">(0)</span></button>
+          <button class="tab" data-swaptab="variant">バリアント不一致 <span class="tab-count" id="swapVariantCount">(0)</span></button>
           <button class="tab" data-swaptab="stray">名前不一致 <span class="tab-count" id="swapStrayCount">(0)</span></button>
         </div>
 
@@ -575,6 +582,30 @@
               <div class="btn-pair">
                 <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
                 <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" data-swappanel="variant">
+          <div class="list-toolbar">
+            <button class="list-toolbar-link" id="swapVariantSelectAll">すべて選択</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapVariantSelectNone">すべて解除</button>
+            <button class="list-toolbar-link push-right" id="swapVariantExpandAll">すべて展開</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapVariantCollapseAll">すべて折りたたむ</button>
+          </div>
+          <div class="row-list" id="swapVariantList"></div>
+          <div class="list-toolbar list-toolbar-bottom">
+            <button class="list-toolbar-link" id="swapVariantSelectCanvas">すべてのインスタンスを選択(0)</button>
+          </div>
+          <div class="tab-footer">
+            <div class="tab-footer-actions">
+              <button class="btn-big" id="swapVariantForceBulkBtn"><span id="swapVariantForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
+              <div class="btn-pair">
+                <button class="btn-big outline-warning" id="swapVariantPlaceBulkBtn"><span id="swapVariantPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
+                <button class="btn-big outline-danger" id="swapVariantClearAllBtn"><span id="swapVariantClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
               </div>
             </div>
           </div>

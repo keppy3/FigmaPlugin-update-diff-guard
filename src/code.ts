@@ -478,6 +478,7 @@ interface LibraryComponentSetEntry {
   path: string; // デバッグ用: 同上
   variantProps: Record<string, string[]>;
   children: { key: string; variantProperties: Record<string, string> }[];
+  defaultVariantKey: string; // Figma標準のライブラリスワップに寄せた「デフォルトバリアントへの差し替え」用（§resolveSwapTarget参照）
 }
 
 interface LibraryScanData {
@@ -560,6 +561,7 @@ async function handleScanLibrary(): Promise<void> {
           children: node.children
             .filter((c): c is ComponentNode => c.type === "COMPONENT")
             .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
+          defaultVariantKey: node.defaultVariant.key,
         });
       } else if (node.type === "COMPONENT") {
         components.push({ name: node.name, key: node.key, path: nodePath(node) });
@@ -596,10 +598,19 @@ async function handleScanLibrary(): Promise<void> {
 // Figma純正の「Swap library」機能は名前のみでコンポーネント/スタイルを
 // マッチングし、見つからなければそのまま元のライブラリに繋がったまま残す
 // （help.figma.comで確認済み）。ここでもそれに倣い、名前一致（＋バリアント
-// セットの場合はプロパティの組み合わせ一致）だけで解決し、一致しないものは
-// 一切書き換えず「迷子」として除外する。
+// セットの場合はプロパティの組み合わせ一致）だけで解決する。実機確認の結果、
+// Figma純正のライブラリスワップはセット名が一致してバリアントの組み合わせが
+// 見つからない場合、そのセットの「デフォルトバリアント」へ差し替えることが
+// わかった。ここでも同じ考え方に寄せ、一致しないものを一律「迷子」にはせず、
+// デフォルトバリアントを暫定の差し替え先として提示する（variantFallback:
+// true）。ただし自動選択である以上、必ず見た目差分あり同様のプレビュー確認を
+// 経てから明示的に実行してもらう（§ui.ts バリアント不一致タブ参照）。
+// 完全に名前が一致しない場合のみ、一切書き換えず「迷子」として除外する。
 
-type SwapMatchResult = { key: string } | { reason: string; category: "name" | "variant" };
+type SwapMatchResult =
+  | { key: string }
+  | { key: string; variantFallback: true }
+  | { reason: string; category: "name" | "variant" };
 
 function variantPropsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
   const aKeys = Object.keys(a);
@@ -623,6 +634,11 @@ function resolveSwapTarget(
     const current = currentVariantProperties ?? {};
     const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
     if (!child) {
+      // 古いキャッシュ済みJSON（defaultVariantKeyが無い版でスキャンした対応表）
+      // との後方互換として、無ければ従来通り「迷子」に落とす。
+      if (set.defaultVariantKey) {
+        return { key: set.defaultVariantKey, variantFallback: true };
+      }
       const desc = Object.entries(current)
         .map(([k, v]) => `${k}=${v}`)
         .join(", ");
@@ -720,7 +736,8 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
       if (swapScanCancelled) break;
 
       store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
-      await computeAndSendDiff(inst, target, "swap-scan-item-result");
+      const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
+      await computeAndSendDiff(inst, target, resultType);
     } catch {
       store.delete(inst.id);
       await postSwapExcluded(inst, "比較中にエラーが発生しました（編集された可能性があります）", "other");

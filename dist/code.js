@@ -343,7 +343,8 @@
             children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
               var _a;
               return { key: c.key, variantProperties: (_a = c.variantProperties) != null ? _a : {} };
-            })
+            }),
+            defaultVariantKey: node.defaultVariant.key
           });
         } else if (node.type === "COMPONENT") {
           components.push({ name: node.name, key: node.key, path: nodePath(node) });
@@ -381,6 +382,9 @@
       const current = currentVariantProperties != null ? currentVariantProperties : {};
       const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
       if (!child) {
+        if (set.defaultVariantKey) {
+          return { key: set.defaultVariantKey, variantFallback: true };
+        }
         const desc = Object.entries(current).map(([k, v]) => `${k}=${v}`).join(", ");
         return {
           reason: `\u300C${matchName}\u300D\u306F\u898B\u3064\u304B\u308A\u307E\u3057\u305F\u304C\u3001\u30D0\u30EA\u30A2\u30F3\u30C8\u306E\u7D44\u307F\u5408\u308F\u305B\uFF08${desc}\uFF09\u304C\u65B0\u30E9\u30A4\u30D6\u30E9\u30EA\u306B\u3042\u308A\u307E\u305B\u3093`,
@@ -452,7 +456,8 @@
         }
         if (swapScanCancelled) break;
         store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
-        await computeAndSendDiff(inst, target, "swap-scan-item-result");
+        const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
+        await computeAndSendDiff(inst, target, resultType);
       } catch (e) {
         store.delete(inst.id);
         await postSwapExcluded(inst, "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09", "other");

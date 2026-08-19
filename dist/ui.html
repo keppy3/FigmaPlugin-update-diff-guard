@@ -210,6 +210,12 @@
   .row-detail { padding: 0 14px 14px 37px; display: flex; flex-direction: column; gap: 10px; }
   .preview-row { display: flex; align-items: flex-start; gap: 10px; }
 
+  /* バリアント不一致タブ: デフォルトバリアントへ自動フォールバックしている旨の注記 */
+  .variant-note {
+    font-size: 10px; color: var(--warning-strong); background: var(--warning-bg);
+    border-radius: 6px; padding: 6px 9px; line-height: 1.5;
+  }
+
   .thumb-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; }
   .preview-frame { width: 120px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -533,6 +539,7 @@
         <div class="tabs">
           <button class="tab active" data-swaptab="clean">✅️ 見た目差分なし <span class="tab-count" id="swapCleanCount">(0)</span></button>
           <button class="tab" data-swaptab="diff">⚠️ 見た目差分あり <span class="tab-count" id="swapDiffCount">(0)</span></button>
+          <button class="tab" data-swaptab="variant">バリアント不一致 <span class="tab-count" id="swapVariantCount">(0)</span></button>
           <button class="tab" data-swaptab="stray">名前不一致 <span class="tab-count" id="swapStrayCount">(0)</span></button>
         </div>
 
@@ -575,6 +582,30 @@
               <div class="btn-pair">
                 <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
                 <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel hidden" data-swappanel="variant">
+          <div class="list-toolbar">
+            <button class="list-toolbar-link" id="swapVariantSelectAll">すべて選択</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapVariantSelectNone">すべて解除</button>
+            <button class="list-toolbar-link push-right" id="swapVariantExpandAll">すべて展開</button>
+            <span class="list-toolbar-sep">|</span>
+            <button class="list-toolbar-link" id="swapVariantCollapseAll">すべて折りたたむ</button>
+          </div>
+          <div class="row-list" id="swapVariantList"></div>
+          <div class="list-toolbar list-toolbar-bottom">
+            <button class="list-toolbar-link" id="swapVariantSelectCanvas">すべてのインスタンスを選択(0)</button>
+          </div>
+          <div class="tab-footer">
+            <div class="tab-footer-actions">
+              <button class="btn-big" id="swapVariantForceBulkBtn"><span id="swapVariantForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
+              <div class="btn-pair">
+                <button class="btn-big outline-warning" id="swapVariantPlaceBulkBtn"><span id="swapVariantPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
+                <button class="btn-big outline-danger" id="swapVariantClearAllBtn"><span id="swapVariantClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
               </div>
             </div>
           </div>
@@ -883,6 +914,7 @@
   var swapRows = /* @__PURE__ */ new Map();
   var swapCleanIds = [];
   var swapDiffIds = [];
+  var swapVariantIds = [];
   var swapStrayGroups = /* @__PURE__ */ new Map();
   var swapChecked = {};
   var swapLatestVisible = {};
@@ -1680,6 +1712,7 @@
     swapRows.clear();
     swapCleanIds = [];
     swapDiffIds = [];
+    swapVariantIds = [];
     swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1695,6 +1728,7 @@
     swapRows.clear();
     swapCleanIds = [];
     swapDiffIds = [];
+    swapVariantIds = [];
     swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1739,6 +1773,18 @@
     } else {
       swapDiffIds.push(row.id);
     }
+    swapChecked[row.id] = true;
+    swapScanDone++;
+    updateSwapScanProgress();
+    renderSwapTabs(row.id);
+  }
+  async function onSwapScanItemVariantResult(msg) {
+    const row = await processDiff(msg);
+    swapRows.set(
+      row.id,
+      row.status === "clean" ? { id: row.id, name: row.name, status: "diff", diffPercent: 0, currentUrl: row.imageUrl, latestUrl: row.imageUrl } : row
+    );
+    swapVariantIds.push(row.id);
     swapChecked[row.id] = true;
     swapScanDone++;
     updateSwapScanProgress();
@@ -1818,6 +1864,31 @@
     </div>
   </details>`;
   }
+  function swapVariantRowHtml(id, justEntered) {
+    var _a;
+    const row = swapRows.get(id);
+    if (!row) return "";
+    const latestLabel = row.sizeMismatch ? "\u30C7\u30D5\u30A9\u30EB\u30C8\u30D0\u30EA\u30A2\u30F3\u30C8\uFF08\u30B5\u30A4\u30BA\u4E0D\u4E00\u81F4\uFF09" : `\u30C7\u30D5\u30A9\u30EB\u30C8\u30D0\u30EA\u30A2\u30F3\u30C8\uFF08\u5DEE\u5206${((_a = row.diffPercent) != null ? _a : 0).toFixed(1)}%\uFF09`;
+    const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
+    const miniThumb = `<img class="row-mini-thumb" src="${row.currentUrl || ""}" alt="">`;
+    return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
+    <summary class="row-summary">
+      ${checkbox}
+      ${miniThumb}
+      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="row-detail">
+      <div class="variant-note">\u3053\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30BB\u30C3\u30C8\u306E\u65E2\u5B9A\u30D0\u30EA\u30A2\u30F3\u30C8\u306B\u5DEE\u3057\u66FF\u3048\u307E\u3059\u3002\u898B\u305F\u76EE\u3092\u78BA\u8A8D\u3057\u3066\u304B\u3089\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>
+      <div class="preview-row">
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
+        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">${latestLabel}</span></div>
+        <div class="side-col">${jumpBtnHtml(id)}</div>
+      </div>
+      ${swapDiffRowButtons(id)}
+    </div>
+  </details>`;
+  }
   function swapStrayRowHtml(key, group) {
     const thumb = group.thumbnailUrl ? `<img src="${group.thumbnailUrl}" alt="">` : "";
     const nameHtml = `<div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.items.length > 1 ? ` <span class="stray-count">\xD7${group.items.length}</span>` : ""}</div>`;
@@ -1861,14 +1932,18 @@
   }
   function swapEmptyState(kind) {
     if (swapScanning) return '<div class="empty-state"><span class="spinner sm"></span>\u78BA\u8A8D\u4E2D\u2026</div>';
-    return `<div class="empty-state">${kind === "clean" ? "\u898B\u305F\u76EE\u5DEE\u5206\u306A\u3057\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093" : "\u898B\u305F\u76EE\u5DEE\u5206\u3042\u308A\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093"}</div>`;
+    if (kind === "clean") return '<div class="empty-state">\u898B\u305F\u76EE\u5DEE\u5206\u306A\u3057\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
+    if (kind === "diff") return '<div class="empty-state">\u898B\u305F\u76EE\u5DEE\u5206\u3042\u308A\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
+    return '<div class="empty-state">\u30D0\u30EA\u30A2\u30F3\u30C8\u4E0D\u4E00\u81F4\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
   }
   function renderSwapTabs(justEnteredId) {
     $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
     $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
+    $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
     $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
     $("swapCleanList").innerHTML = swapCleanIds.length ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
     $("swapDiffList").innerHTML = swapDiffIds.length ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
+    $("swapVariantList").innerHTML = swapVariantIds.length ? swapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("variant");
     renderSwapStray();
     wireSwapRowEvents();
     updateSwapFooterButtons();
@@ -1930,8 +2005,8 @@
   }
   function handleSwapCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");
-    const tab = swapCleanIds.includes(id) ? "clean" : "diff";
-    const list = tab === "clean" ? swapCleanIds : swapDiffIds;
+    const tab = swapCleanIds.includes(id) ? "clean" : swapDiffIds.includes(id) ? "diff" : "variant";
+    const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
     const index = list.indexOf(id);
     const newState = cb.checked;
     if (e.shiftKey && swapLastClickedIndex && swapLastClickedIndex.tab === tab) {
@@ -1946,8 +2021,8 @@
     swapLastClickedIndex = { tab, index };
   }
   function bindSwapListToolbar(tab) {
-    const list = tab === "clean" ? () => swapCleanIds : () => swapDiffIds;
-    const prefix = tab === "clean" ? "swapClean" : "swapDiff";
+    const list = tab === "clean" ? () => swapCleanIds : tab === "diff" ? () => swapDiffIds : () => swapVariantIds;
+    const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
     $(`${prefix}SelectAll`).addEventListener("click", () => {
       list().forEach((id) => swapChecked[id] = true);
       renderSwapTabs();
@@ -1967,6 +2042,7 @@
   }
   bindSwapListToolbar("clean");
   bindSwapListToolbar("diff");
+  bindSwapListToolbar("variant");
   function updateSwapFooterButtons() {
     const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
     $("swapBulkBtnLabel").textContent = `\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${cleanChecked})`;
@@ -1985,6 +2061,18 @@
     $("swapCleanSelectCanvas").disabled = cleanChecked === 0;
     $("swapDiffSelectCanvas").textContent = `\u3059\u3079\u3066\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u9078\u629E(${forceChecked})`;
     $("swapDiffSelectCanvas").disabled = forceChecked === 0;
+    const variantChecked = swapVariantIds.filter((id) => swapChecked[id]).length;
+    $("swapVariantForceBulkBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${variantChecked})`;
+    $("swapVariantForceBulkBtn").disabled = variantChecked === 0;
+    const variantPlaceableChecked = swapVariantIds.filter(
+      (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
+    ).length;
+    $("swapVariantPlaceBulkBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${variantPlaceableChecked})`;
+    $("swapVariantPlaceBulkBtn").disabled = variantPlaceableChecked === 0;
+    $("swapVariantClearAllBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664(${markerCount})`;
+    $("swapVariantClearAllBtn").disabled = markerCount === 0;
+    $("swapVariantSelectCanvas").textContent = `\u3059\u3079\u3066\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u9078\u629E(${variantChecked})`;
+    $("swapVariantSelectCanvas").disabled = variantChecked === 0;
   }
   function showSwapBulkBusy(label) {
     showSwap("busy");
@@ -2029,9 +2117,31 @@
     if (targets.length === 0) return;
     post({ type: "select-on-canvas", ids: targets });
   });
+  $("swapVariantForceBulkBtn").addEventListener("click", () => {
+    const targets = swapVariantIds.filter((id) => swapChecked[id]);
+    if (targets.length === 0) return;
+    openForceConfirm({ kind: "bulk", ids: targets, mode: "swap" });
+  });
+  $("swapVariantPlaceBulkBtn").addEventListener("click", () => {
+    const targets = swapVariantIds.filter(
+      (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
+    );
+    if (targets.length === 0) return;
+    showSwapBulkBusy("\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059");
+    post({ type: "place-latest-bulk", ids: targets });
+  });
+  $("swapVariantClearAllBtn").addEventListener("click", () => {
+    post({ type: "clear-markers" });
+  });
+  $("swapVariantSelectCanvas").addEventListener("click", () => {
+    const targets = swapVariantIds.filter((id) => swapChecked[id]);
+    if (targets.length === 0) return;
+    post({ type: "select-on-canvas", ids: targets });
+  });
   function removeSwapResolvedId(id) {
     swapCleanIds = swapCleanIds.filter((x) => x !== id);
     swapDiffIds = swapDiffIds.filter((x) => x !== id);
+    swapVariantIds = swapVariantIds.filter((x) => x !== id);
     swapRows.delete(id);
     delete swapChecked[id];
     delete swapLatestVisible[id];
@@ -2140,6 +2250,9 @@
         break;
       case "swap-scan-item-result":
         void onSwapScanItemResult(msg);
+        break;
+      case "swap-scan-item-variant-result":
+        void onSwapScanItemVariantResult(msg);
         break;
       case "swap-scan-done":
         onSwapScanFinished(false);
