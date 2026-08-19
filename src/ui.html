@@ -399,7 +399,7 @@
             <span class="radio-caption">ファイル内の全ページ</span>
           </label>
         </div>
-        <button class="btn-big" id="scanBtn">スキャン</button>
+        <button class="btn-big" id="scanBtn">更新対象をスキャン</button>
         <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
       </div>
 
@@ -478,8 +478,8 @@
     <div class="mode-pane hidden" id="swapApplyModePane">
       <div class="setup" id="swapPasteView">
         <div class="field-head">
-          <span class="setup-label">スワップ先ライブラリの公開リスト</span>
-          <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先ライブラリの公開リストについて">i</button>
+          <span class="setup-label">スワップ先ライブラリの公開コンポーネントリスト</span>
+          <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先ライブラリの公開コンポーネントリストについて">i</button>
         </div>
 
         <div class="library-chip-list" id="swapLibraryChipList"></div>
@@ -515,7 +515,7 @@
             <span class="radio-caption">ファイル内の全ページ</span>
           </label>
         </div>
-        <button class="btn-big" id="swapScanBtn" disabled>スキャン</button>
+        <button class="btn-big" id="swapScanBtn" disabled>スワップ対象をスキャン</button>
         <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
       </div>
 
@@ -626,8 +626,8 @@
 
     <div class="mode-pane hidden" id="swapScanModePane">
       <div class="setup" id="scanLibIntroView">
-        <div class="setup-intro">このファイル内のコンポーネント／コンポーネントセットをすべて走査し、名前・キー・バリアント構成をまとめた<b>スワップ先ライブラリの公開リスト</b>を作成します。<br><br>このファイルが<b>スワップ先の新しいライブラリ</b>であることを確認してください。</div>
-        <button class="btn-big" id="scanLibStartBtn">スキャン開始</button>
+        <div class="setup-intro">このファイル内のコンポーネント／コンポーネントセットをすべて走査し、名前・キー・バリアント構成をまとめた<b>スワップ先ライブラリの公開コンポーネントリスト</b>を作成します。<br><br>このファイルが<b>スワップ先の新しいライブラリ</b>であることを確認してください。</div>
+        <button class="btn-big" id="scanLibStartBtn">公開コンポーネントリストを作成</button>
       </div>
 
       <div class="busy hidden" id="scanLibBusyView">
@@ -651,9 +651,9 @@
         <div class="stat-summary">
           <div class="stat-box"><span class="num" id="scanLibComponentCount">0</span><span class="label">コンポーネント</span></div>
         </div>
-        <div class="setup-label">スワップ先ライブラリの公開リストの内容</div>
+        <div class="setup-label">スワップ先ライブラリの公開コンポーネントリストの内容</div>
         <div class="json-preview" id="scanLibJsonPreview"></div>
-        <button class="btn-big" id="scanLibCopyBtn">スワップ先ライブラリの公開リストをコピー</button>
+        <button class="btn-big" id="scanLibCopyBtn">スワップ先ライブラリの公開コンポーネントリストをコピー</button>
         <div class="setup-footnote">このリストを、スワップ対象の遷移図ファイル側の「ライブラリスワップ」に貼り付けてください</div>
       </div>
     </div>
@@ -675,8 +675,8 @@
 
   <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
     <div class="modal-box">
-      <div class="modal-title">スワップ先ライブラリの公開リストとは</div>
-      <div class="modal-body">スワップを実行するには、事前にライブラリファイル側でライブラリスキャンを実行し、スワップ先ライブラリの公開リスト（JSON）を取得する必要があります。<br><br>スワップ先ライブラリの公開リストを取得したら、このテキストエリアに貼り付けてください。</div>
+      <div class="modal-title">スワップ先ライブラリの公開コンポーネントリストとは</div>
+      <div class="modal-body">スワップを実行するには、事前にライブラリファイル側でライブラリスキャンを実行し、スワップ先ライブラリの公開コンポーネントリスト（JSON）を取得する必要があります。<br><br>スワップ先ライブラリの公開コンポーネントリストを取得したら、このテキストエリアに貼り付けてください。</div>
       <div class="modal-actions"><button class="ghost-btn" id="swapPasteInfoClose">閉じる</button></div>
     </div>
   </div>

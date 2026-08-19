@@ -855,7 +855,7 @@ function setMarkerCount(count: number): void {
   updateSwapFooterButtons();
 }
 
-/* ---- ライブラリスキャン（スワップ先ライブラリの公開リストの作成） ---- */
+/* ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） ---- */
 const scanLibViews = {
   intro: $("scanLibIntroView"),
   busy: $("scanLibBusyView"),
@@ -950,7 +950,7 @@ $("scanLibCopyBtn").addEventListener("click", () => {
 });
 
 /* ---- ライブラリスワップ: 複数ライブラリのチップ管理 ----
-   スワップ先ライブラリの公開リストを複数追加できる。＋ボタンで貼り付け
+   スワップ先ライブラリの公開コンポーネントリストを複数追加できる。＋ボタンで貼り付け
    フォームを開き、有効なJSONなら「追加」でチップに変わる。名前が衝突した
    場合は先に追加した方を優先する（§code.ts handleScanSwap参照）。 */
 $("swapPasteInfoBtn").addEventListener("click", () => $("swapPasteInfoOverlay").classList.remove("hidden"));
@@ -1037,7 +1037,7 @@ function validateAddLibraryPaste(): void {
   pendingAddLibraryRaw = "";
 
   if (!raw) {
-    statusEl.textContent = "⚠ スワップ先ライブラリの公開リストを貼り付けてください";
+    statusEl.textContent = "⚠ スワップ先ライブラリの公開コンポーネントリストを貼り付けてください";
     statusEl.className = "paste-status error";
     confirmBtn.disabled = true;
     return;
@@ -1049,7 +1049,7 @@ function validateAddLibraryPaste(): void {
     parsed = null;
   }
   if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
-    statusEl.textContent = "⚠ スワップ先ライブラリの公開リストの形式が正しくありません";
+    statusEl.textContent = "⚠ スワップ先ライブラリの公開コンポーネントリストの形式が正しくありません";
     statusEl.className = "paste-status error";
     confirmBtn.disabled = true;
     return;
