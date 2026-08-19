@@ -316,10 +316,10 @@
     const components = [];
     const componentSets = [];
     const BATCH_SIZE = 30;
-    let found = 0;
-    let scanned = 0;
-    post({ type: "library-scan-progress", found, scanned });
-    for (const page of figma.root.children) {
+    const pages = figma.root.children;
+    const totalPages = pages.length;
+    let pagesCompleted = 0;
+    for (const page of pages) {
       await page.loadAsync();
       const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
       const candidates = pageFound.filter((node) => {
@@ -328,8 +328,8 @@
         if (hasComponentAncestor(node)) return false;
         return true;
       });
-      found += candidates.length;
-      post({ type: "library-scan-progress", found, scanned });
+      let pageScanned = 0;
+      post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
       for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
         const batch = candidates.slice(i, i + BATCH_SIZE);
         const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
@@ -355,9 +355,11 @@
             components.push({ name: node.name, key: node.key, path: nodePath(node) });
           }
         });
-        scanned += batch.length;
-        post({ type: "library-scan-progress", found, scanned });
+        pageScanned += batch.length;
+        post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
       }
+      pagesCompleted++;
+      post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: candidates.length, pageTotal: candidates.length });
     }
     const data = {
       libraryName: figma.root.name,

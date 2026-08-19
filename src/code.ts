@@ -523,23 +523,20 @@ async function handleScanLibrary(): Promise<void> {
   const componentSets: LibraryComponentSetEntry[] = [];
 
   // Figmaには「このファイルにPublish済みコンポーネントが何件あるか」を事前に
-  // 一発で返すAPIが無い（Web版Analyticsのような集計は取れない）ので、真の
-  // 合計は最後のページを走査し終わるまで確定しない。よって進捗は固定の分母
-  // を持つ%バーではなく、「見つかった件数（found）」と「確認済み件数
-  // （scanned）」という2つの伸びていくカウンタとして扱う。
-  //
-  // 以前はfindAllWithCriteria→getPublishStatusAsyncの2フェーズに分け、全ページの
-  // 走査（page.loadAsync含む）を終えてから初めて進捗を送っていたが、ページ数の
-  // 多いファイルではそのページ走査自体に時間がかかり、最初の進捗が出るまで
-  // ずっと0%表示のまま止まって見えるという逆の問題を生んでいた。ページ単位の
-  // 探索とバッチ単位の確認、両方の完了ごとに進捗を送ることで、常にどちらかの
-  // カウンタが動き続けるようにする。
+  // 一発で返すAPIが無い（Web版Analyticsのような集計は取れない）ので、ファイル
+  // 全体を分母にした単一の%は組めない。が、「全ページ数」と「今のページの
+  // コンポーネント候補数」はどちらもそのページに到達した時点で確定する値
+  // なので、二段のゲージにすればどちらも正確な分母を持てる：
+  //   上段 = スキャン済みページ数 / 全ページ数（figma.root.children.lengthで
+  //          最初から判明済み）
+  //   下段 = 確認済みメインコンポーネント数 / 今のページのメインコンポーネント数
+  //          （そのページのfindAllWithCriteriaが終わった時点で判明）
   const BATCH_SIZE = 30;
-  let found = 0;
-  let scanned = 0;
-  post({ type: "library-scan-progress", found, scanned });
+  const pages = figma.root.children;
+  const totalPages = pages.length;
+  let pagesCompleted = 0;
 
-  for (const page of figma.root.children) {
+  for (const page of pages) {
     await page.loadAsync();
     const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
     const candidates = pageFound.filter((node) => {
@@ -548,8 +545,8 @@ async function handleScanLibrary(): Promise<void> {
       return true;
     });
 
-    found += candidates.length;
-    post({ type: "library-scan-progress", found, scanned }); // ページを読み込んだ時点でまずfoundだけ更新
+    let pageScanned = 0;
+    post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
 
     for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
       const batch = candidates.slice(i, i + BATCH_SIZE);
@@ -581,9 +578,12 @@ async function handleScanLibrary(): Promise<void> {
         }
       });
 
-      scanned += batch.length;
-      post({ type: "library-scan-progress", found, scanned });
+      pageScanned += batch.length;
+      post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
     }
+
+    pagesCompleted++;
+    post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: candidates.length, pageTotal: candidates.length });
   }
 
   const data: LibraryScanData = {

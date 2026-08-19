@@ -886,18 +886,25 @@ let lastLibraryScanJson = "";
 
 $("scanLibStartBtn").addEventListener("click", () => {
   showScanLib("busy");
-  $("scanLibBusyStep").textContent = "";
-  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = "0%";
+  $("scanLibPageStep").textContent = "";
+  $("scanLibCompStep").textContent = "";
+  ($("scanLibPageFill").style as CSSStyleDeclaration).width = "0%";
+  ($("scanLibCompFill").style as CSSStyleDeclaration).width = "0%";
   post({ type: "scan-library" });
 });
 
-// ファイル全体のPublish済みコンポーネント数を事前に取得するAPIが無いため、
-// 固定の分母を持つ%表示はできない。「見つかった件数」「確認済み件数」という
-// 伸びていく2つのカウンタをそのまま数字で見せることで、進捗が止まって見える
-// ことなく、実際に処理が進んでいることを伝える（§code.ts handleScanLibrary参照）。
-function onLibraryScanProgress(found: number, scanned: number): void {
-  $("scanLibBusyStep").textContent = `${scanned} / ${found} 件を確認済み`;
-  ($("scanLibBusyFill").style as CSSStyleDeclaration).width = found ? `${Math.round((scanned / found) * 100)}%` : "0%";
+// ファイル全体のPublish済みコンポーネント数を事前に取得するAPIは無いが、
+// 「全ページ数」と「今のページのメインコンポーネント候補数」はどちらも
+// そのページに到達した時点で確定する値なので、二段のゲージにすればどちらも
+// 正確な分母を持てる（§code.ts handleScanLibrary参照）。
+// 上段＝スキャン済みページ数／全ページ、下段＝確認済み／今のページの候補数。
+function onLibraryScanProgress(pagesCompleted: number, totalPages: number, pageScanned: number, pageTotal: number): void {
+  $("scanLibPageStep").textContent = `ページ ${pagesCompleted} / ${totalPages}`;
+  ($("scanLibPageFill").style as CSSStyleDeclaration).width = totalPages
+    ? `${Math.round((pagesCompleted / totalPages) * 100)}%`
+    : "0%";
+  $("scanLibCompStep").textContent = `メインコンポーネント ${pageScanned} / ${pageTotal}`;
+  ($("scanLibCompFill").style as CSSStyleDeclaration).width = pageTotal ? `${Math.round((pageScanned / pageTotal) * 100)}%` : "0%";
 }
 
 function onLibraryScanDone(data: LibraryScanData, coverThumbnail?: Uint8Array): void {
@@ -1750,7 +1757,7 @@ window.onmessage = (event: MessageEvent) => {
       setMarkerCount(msg.count);
       break;
     case "library-scan-progress":
-      onLibraryScanProgress(msg.found, msg.scanned);
+      onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
       break;
     case "library-scan-done":
       onLibraryScanDone(msg.data, msg.coverThumbnail);

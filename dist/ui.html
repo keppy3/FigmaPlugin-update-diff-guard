@@ -143,6 +143,9 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .busy-label { font-size: 12.5px; font-weight: 700; }
   .busy-step { font-size: 11px; color: var(--text-muted); min-height: 14px; }
+  /* ライブラリスキャンの2段ゲージ（ページ／今のページ内のメインコンポーネント）
+     を1組としてまとめ、組同士の間隔を.busyの余白より広めに保つ */
+  .busy-gauge { width: 100%; display: flex; flex-direction: column; gap: 6px; }
   .progress-track { width: 100%; height: 4px; border-radius: 3px; background: var(--divider); overflow: hidden; }
   .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.2s ease; }
 
@@ -630,8 +633,14 @@
       <div class="busy hidden" id="scanLibBusyView">
         <div class="spinner"></div>
         <div class="busy-label">ライブラリをスキャンしています</div>
-        <div class="busy-step" id="scanLibBusyStep"></div>
-        <div class="progress-track"><div class="progress-fill" id="scanLibBusyFill"></div></div>
+        <div class="busy-gauge">
+          <div class="busy-step" id="scanLibPageStep"></div>
+          <div class="progress-track"><div class="progress-fill" id="scanLibPageFill"></div></div>
+        </div>
+        <div class="busy-gauge">
+          <div class="busy-step" id="scanLibCompStep"></div>
+          <div class="progress-track"><div class="progress-fill" id="scanLibCompFill"></div></div>
+        </div>
       </div>
 
       <div class="setup hidden" id="scanLibResultView">
@@ -1527,13 +1536,17 @@
   var lastLibraryScanJson = "";
   $("scanLibStartBtn").addEventListener("click", () => {
     showScanLib("busy");
-    $("scanLibBusyStep").textContent = "";
-    $("scanLibBusyFill").style.width = "0%";
+    $("scanLibPageStep").textContent = "";
+    $("scanLibCompStep").textContent = "";
+    $("scanLibPageFill").style.width = "0%";
+    $("scanLibCompFill").style.width = "0%";
     post({ type: "scan-library" });
   });
-  function onLibraryScanProgress(found, scanned) {
-    $("scanLibBusyStep").textContent = `${scanned} / ${found} \u4EF6\u3092\u78BA\u8A8D\u6E08\u307F`;
-    $("scanLibBusyFill").style.width = found ? `${Math.round(scanned / found * 100)}%` : "0%";
+  function onLibraryScanProgress(pagesCompleted, totalPages, pageScanned, pageTotal) {
+    $("scanLibPageStep").textContent = `\u30DA\u30FC\u30B8 ${pagesCompleted} / ${totalPages}`;
+    $("scanLibPageFill").style.width = totalPages ? `${Math.round(pagesCompleted / totalPages * 100)}%` : "0%";
+    $("scanLibCompStep").textContent = `\u30E1\u30A4\u30F3\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8 ${pageScanned} / ${pageTotal}`;
+    $("scanLibCompFill").style.width = pageTotal ? `${Math.round(pageScanned / pageTotal * 100)}%` : "0%";
   }
   function onLibraryScanDone(data, coverThumbnail) {
     $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
@@ -2237,7 +2250,7 @@
         setMarkerCount(msg.count);
         break;
       case "library-scan-progress":
-        onLibraryScanProgress(msg.found, msg.scanned);
+        onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
         break;
       case "library-scan-done":
         onLibraryScanDone(msg.data, msg.coverThumbnail);
