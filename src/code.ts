@@ -772,6 +772,14 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
         continue;
       }
 
+      // 既にこのキーを参照している＝スワップしても何も変わらない。更新フロー側の
+      // 「既に最新版を参照」（§runScan）と同じ扱いにする — 見た目差分なしタブの
+      // チェック対象には含めず、対象外・スワップなしとして別枠で見せるだけにする。
+      if (target.key === main.key) {
+        post({ type: "swap-scan-item-already-latest", name: inst.name });
+        continue;
+      }
+
       if (swapScanCancelled) break;
 
       store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });

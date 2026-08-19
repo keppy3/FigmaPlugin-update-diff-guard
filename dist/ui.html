@@ -180,6 +180,17 @@
   .list-toolbar-sep { color: var(--divider); font-size: 10px; }
   .list-toolbar-link.push-right { margin-left: auto; }
 
+  /* すべて選択/解除（ネイティブindeterminate付きチェックボックス）・すべて展開/
+     折りたたむ（アイコン差し替えトグル）。テキストボタン2組より場所を取らない。 */
+  .list-toolbar-icon-btn {
+    display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0;
+    border: none; background: none; color: var(--accent-strong); cursor: pointer; border-radius: 4px; flex: none;
+  }
+  .list-toolbar-icon-btn:hover { background: var(--row-hover); }
+  .list-toolbar-icon-btn svg { width: 13px; height: 13px; }
+  .list-toolbar-icon-btn[disabled] { color: var(--text-faint); cursor: default; pointer-events: none; }
+  .list-toolbar-icon-btn.push-right { margin-left: auto; }
+
   /* リスト下端・一括処理ボタンの直上に置く「すべてのインスタンスを選択」用。
      チェック済みインスタンスをFigmaキャンバス上で選択する機能で、プラグイン内
      チェックボックスの一括ON/OFF（上部の.list-toolbar）とは別物なので分けて配置する。 */
@@ -372,9 +383,9 @@
 </head>
 <body>
   <div class="mode-tabs">
-    <button class="mode-tab active" data-mode="update">コンポーネント更新</button>
-    <button class="mode-tab" data-mode="swap-apply">ライブラリスワップ</button>
-    <button class="mode-tab" data-mode="swap-scan">ライブラリスキャン</button>
+    <button class="mode-tab active" data-mode="update">🔄 コンポーネント</button>
+    <button class="mode-tab" data-mode="swap-apply">🔀 ライブラリスワップ</button>
+    <button class="mode-tab" data-mode="swap-scan">🔍 ライブラリスキャン</button>
   </div>
 
   <div class="panel-body">
@@ -430,12 +441,8 @@
 
         <div class="tab-panel" data-panel="clean">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="cleanExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="cleanCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="cleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="cleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="cleanList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -450,12 +457,8 @@
 
         <div class="tab-panel hidden" data-panel="diff">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="diffExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="diffCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="diffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="diffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="diffList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -548,12 +551,8 @@
 
         <div class="tab-panel" data-swappanel="clean">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="swapCleanSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapCleanSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="swapCleanExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapCleanCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="swapCleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="swapCleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapCleanList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -568,12 +567,8 @@
 
         <div class="tab-panel hidden" data-swappanel="diff">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="swapDiffSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapDiffSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="swapDiffExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapDiffCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="swapDiffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="swapDiffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapDiffList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -592,12 +587,8 @@
 
         <div class="tab-panel hidden" data-swappanel="variant">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="swapVariantSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapVariantSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="swapVariantExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapVariantCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="swapVariantSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="swapVariantExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapVariantList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -907,6 +898,8 @@
   var EYE_CLOSED = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M2 2l12 12"/></svg>';
   var CHEVRON_SVG = '<svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
   var JUMP_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>';
+  var DOUBLE_CHEVRON_DOWN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 4 4-4"/><path d="M4 9l4 4 4-4"/></svg>';
+  var DOUBLE_CHEVRON_UP = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l4-4 4 4"/><path d="M4 7l4-4 4 4"/></svg>';
   var EXCLUDED_GROUP_ID = "__excluded__";
   var rows = /* @__PURE__ */ new Map();
   var cleanIds = [];
@@ -924,6 +917,8 @@
   var swapCleanIds = [];
   var swapDiffIds = [];
   var swapVariantIds = [];
+  var swapExcluded = [];
+  var SWAP_EXCLUDED_GROUP_ID = "__swap_excluded__";
   var swapStrayGroups = /* @__PURE__ */ new Map();
   var swapChecked = {};
   var swapLatestVisible = {};
@@ -1269,6 +1264,8 @@
     $("diffList").innerHTML = diffIds.length ? diffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("") : emptyState("diff");
     wireRowEvents();
     updateFooterButtons();
+    updateListToolbarToggles("clean");
+    updateListToolbarToggles("diff");
   }
   function wireRowEvents() {
     document.querySelectorAll("#resultView .row").forEach((details) => {
@@ -1339,30 +1336,39 @@
     } else {
       checked[id] = newState;
       updateFooterButtons();
+      updateListToolbarToggles(tab);
     }
     lastClickedIndex = { tab, index };
   }
   function bindListToolbar(tab) {
     const list = tab === "clean" ? () => cleanIds : () => diffIds;
-    $(`${tab}SelectAll`).addEventListener("click", () => {
-      list().forEach((id) => checked[id] = true);
+    $(`${tab}SelectAllToggle`).addEventListener("click", () => {
+      const newState = $(`${tab}SelectAllToggle`).checked;
+      list().forEach((id) => checked[id] = newState);
       renderTabs();
     });
-    $(`${tab}SelectNone`).addEventListener("click", () => {
-      list().forEach((id) => checked[id] = false);
-      renderTabs();
-    });
-    $(`${tab}ExpandAll`).addEventListener("click", () => {
-      list().forEach((id) => expandedIds[id] = true);
-      renderTabs();
-    });
-    $(`${tab}CollapseAll`).addEventListener("click", () => {
-      list().forEach((id) => expandedIds[id] = false);
+    $(`${tab}ExpandToggle`).addEventListener("click", () => {
+      const allExpanded = list().length > 0 && list().every((id) => expandedIds[id]);
+      const newState = !allExpanded;
+      list().forEach((id) => expandedIds[id] = newState);
       renderTabs();
     });
   }
   bindListToolbar("clean");
   bindListToolbar("diff");
+  function updateListToolbarToggles(tab) {
+    const list = tab === "clean" ? cleanIds : diffIds;
+    const checkedCount = list.filter((id) => checked[id]).length;
+    const selectToggle = $(`${tab}SelectAllToggle`);
+    selectToggle.checked = list.length > 0 && checkedCount === list.length;
+    selectToggle.indeterminate = checkedCount > 0 && checkedCount < list.length;
+    selectToggle.disabled = list.length === 0;
+    const allExpanded = list.length > 0 && list.every((id) => expandedIds[id]);
+    const expandToggle = $(`${tab}ExpandToggle`);
+    expandToggle.innerHTML = allExpanded ? DOUBLE_CHEVRON_UP : DOUBLE_CHEVRON_DOWN;
+    expandToggle.title = allExpanded ? "\u3059\u3079\u3066\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u5C55\u958B";
+    expandToggle.disabled = list.length === 0;
+  }
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
     $("updateBtnLabel").textContent = `\u4E00\u62EC\u66F4\u65B0(${cleanChecked})`;
@@ -1726,6 +1732,7 @@
     swapCleanIds = [];
     swapDiffIds = [];
     swapVariantIds = [];
+    swapExcluded = [];
     swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1742,6 +1749,7 @@
     swapCleanIds = [];
     swapDiffIds = [];
     swapVariantIds = [];
+    swapExcluded = [];
     swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1774,6 +1782,12 @@
         thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : void 0
       });
     }
+    swapScanDone++;
+    updateSwapScanProgress();
+    renderSwapTabs();
+  }
+  function onSwapScanAlreadyLatest(name) {
+    swapExcluded.push({ name, reason: "\u65E2\u306B\u6700\u65B0\u7248\u3092\u53C2\u7167" });
     swapScanDone++;
     updateSwapScanProgress();
     renderSwapTabs();
@@ -1823,6 +1837,19 @@
       });
     });
   });
+  function swapExcludedRowHtml(entry) {
+    return `<div class="excluded-row"><span class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span><span class="excluded-reason">${escapeHtml(entry.reason)}</span></div>`;
+  }
+  function swapExcludedGroupHtml() {
+    const open = swapExpandedIds[SWAP_EXCLUDED_GROUP_ID] ? " open" : "";
+    return `<details class="row" data-id="${SWAP_EXCLUDED_GROUP_ID}"${open}>
+    <summary class="row-summary excluded-summary">
+      <span class="row-name">\u5BFE\u8C61\u5916\u30FB\u30B9\u30EF\u30C3\u30D7\u306A\u3057 <span class="num">(${swapExcluded.length})</span></span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="excluded-rows">${swapExcluded.map(swapExcludedRowHtml).join("")}</div>
+  </details>`;
+  }
   function swapCleanRowHtml(id, justEntered) {
     const row = swapRows.get(id);
     if (!row) return "";
@@ -1954,12 +1981,17 @@
     $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
     $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
     $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
-    $("swapCleanList").innerHTML = swapCleanIds.length ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
+    let swapCleanHtml = swapCleanIds.length ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
+    if (swapExcluded.length || swapScanning) swapCleanHtml += swapExcludedGroupHtml();
+    $("swapCleanList").innerHTML = swapCleanHtml;
     $("swapDiffList").innerHTML = swapDiffIds.length ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
     $("swapVariantList").innerHTML = swapVariantIds.length ? swapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("variant");
     renderSwapStray();
     wireSwapRowEvents();
     updateSwapFooterButtons();
+    updateSwapListToolbarToggles("clean");
+    updateSwapListToolbarToggles("diff");
+    updateSwapListToolbarToggles("variant");
   }
   function wireSwapRowEvents() {
     document.querySelectorAll("#swapResultView .row").forEach((details) => {
@@ -2030,32 +2062,42 @@
     } else {
       swapChecked[id] = newState;
       updateSwapFooterButtons();
+      updateSwapListToolbarToggles(tab);
     }
     swapLastClickedIndex = { tab, index };
   }
   function bindSwapListToolbar(tab) {
     const list = tab === "clean" ? () => swapCleanIds : tab === "diff" ? () => swapDiffIds : () => swapVariantIds;
     const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
-    $(`${prefix}SelectAll`).addEventListener("click", () => {
-      list().forEach((id) => swapChecked[id] = true);
+    $(`${prefix}SelectAllToggle`).addEventListener("click", () => {
+      const newState = $(`${prefix}SelectAllToggle`).checked;
+      list().forEach((id) => swapChecked[id] = newState);
       renderSwapTabs();
     });
-    $(`${prefix}SelectNone`).addEventListener("click", () => {
-      list().forEach((id) => swapChecked[id] = false);
-      renderSwapTabs();
-    });
-    $(`${prefix}ExpandAll`).addEventListener("click", () => {
-      list().forEach((id) => swapExpandedIds[id] = true);
-      renderSwapTabs();
-    });
-    $(`${prefix}CollapseAll`).addEventListener("click", () => {
-      list().forEach((id) => swapExpandedIds[id] = false);
+    $(`${prefix}ExpandToggle`).addEventListener("click", () => {
+      const allExpanded = list().length > 0 && list().every((id) => swapExpandedIds[id]);
+      const newState = !allExpanded;
+      list().forEach((id) => swapExpandedIds[id] = newState);
       renderSwapTabs();
     });
   }
   bindSwapListToolbar("clean");
   bindSwapListToolbar("diff");
   bindSwapListToolbar("variant");
+  function updateSwapListToolbarToggles(tab) {
+    const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+    const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
+    const checkedCount = list.filter((id) => swapChecked[id]).length;
+    const selectToggle = $(`${prefix}SelectAllToggle`);
+    selectToggle.checked = list.length > 0 && checkedCount === list.length;
+    selectToggle.indeterminate = checkedCount > 0 && checkedCount < list.length;
+    selectToggle.disabled = list.length === 0;
+    const allExpanded = list.length > 0 && list.every((id) => swapExpandedIds[id]);
+    const expandToggle = $(`${prefix}ExpandToggle`);
+    expandToggle.innerHTML = allExpanded ? DOUBLE_CHEVRON_UP : DOUBLE_CHEVRON_DOWN;
+    expandToggle.title = allExpanded ? "\u3059\u3079\u3066\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u5C55\u958B";
+    expandToggle.disabled = list.length === 0;
+  }
   function updateSwapFooterButtons() {
     const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
     $("swapBulkBtnLabel").textContent = `\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${cleanChecked})`;
@@ -2260,6 +2302,9 @@
         break;
       case "swap-scan-item-excluded":
         onSwapScanExcluded({ id: msg.id, name: msg.name, path: msg.path, reason: msg.reason, category: msg.category, thumbnail: msg.thumbnail });
+        break;
+      case "swap-scan-item-already-latest":
+        onSwapScanAlreadyLatest(msg.name);
         break;
       case "swap-scan-item-result":
         void onSwapScanItemResult(msg);

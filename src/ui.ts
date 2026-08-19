@@ -38,6 +38,12 @@ const CHEVRON_SVG =
   '<svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
 const JUMP_ICON =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>';
+// すべて展開/折りたたむトグルの2状態アイコン（「すべて展開」の状態＝クリックで
+// 全展開する、を示す二重シェブロン下向き。展開後は上向きに切り替わる）。
+const DOUBLE_CHEVRON_DOWN =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 4 4-4"/><path d="M4 9l4 4 4-4"/></svg>';
+const DOUBLE_CHEVRON_UP =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l4-4 4 4"/><path d="M4 7l4-4 4 4"/></svg>';
 
 const EXCLUDED_GROUP_ID = "__excluded__"; // 対象外アコーディオンのdata-id。expandedIdsに同居させ、行の開閉と同じ仕組みで管理する
 
@@ -90,6 +96,11 @@ let swapDiffIds: string[] = [];
 // 項目。見た目差分ありタブと同じ行UI・操作（このままスワップ／比較用インスタンス
 // 配置）を持つが、自動選択である旨を毎回明示するため独立したタブに分けている。
 let swapVariantIds: string[] = [];
+// 既にこのライブラリの最新版を参照している＝スワップしても何も変わらない項目。
+// 更新フロー側の「対象外・更新なし」（§excluded）と同じ扱いで、見た目差分なし
+// タブの中にアコーディオンでまとめるだけにする（チェック不可・一括対象外）。
+let swapExcluded: ExcludedEntry[] = [];
+const SWAP_EXCLUDED_GROUP_ID = "__swap_excluded__";
 const swapStrayGroups = new Map<string, SwapStrayGroup>(); // key: `${name} ${reason}`
 const swapChecked: Record<string, boolean> = {};
 const swapLatestVisible: Record<string, boolean> = {};
@@ -531,6 +542,8 @@ function renderTabs(justEnteredId?: string): void {
 
   wireRowEvents();
   updateFooterButtons();
+  updateListToolbarToggles("clean");
+  updateListToolbarToggles("diff");
 }
 
 function wireRowEvents(): void {
@@ -605,35 +618,49 @@ function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   } else {
     checked[id] = newState;
     updateFooterButtons();
+    updateListToolbarToggles(tab);
   }
   lastClickedIndex = { tab, index };
 }
 
-/* ---- すべて選択・すべて解除・すべて展開・すべて折りたたむ ---- */
+/* ---- すべて選択/解除・すべて展開/折りたたむ（3状態トグル1個ずつに集約） ----
+   選択チェックボックスはネイティブのindeterminate仕様をそのまま使う: 一部
+   選択中はindeterminate=trueで表示し、その状態でクリックすると仕様上
+   checked=trueに解決される（＝全選択）。全選択中のクリックはchecked=false
+   （＝全解除）、未選択中のクリックはchecked=true（＝全選択）と、ネイティブの
+   トグル挙動だけで要件の3状態遷移がそのまま成立する。展開/折りたたむは
+   ネイティブ相当が無いので、同じ状態遷移をボタン+アイコン差し替えで手動実装。 */
 function bindListToolbar(tab: "clean" | "diff"): void {
   const list = tab === "clean" ? (): string[] => cleanIds : (): string[] => diffIds;
-  $(`${tab}SelectAll`).addEventListener("click", () => {
-    list().forEach((id) => (checked[id] = true));
+  $(`${tab}SelectAllToggle`).addEventListener("click", () => {
+    const newState = ($(`${tab}SelectAllToggle`) as HTMLInputElement).checked;
+    list().forEach((id) => (checked[id] = newState));
     renderTabs();
   });
-  $(`${tab}SelectNone`).addEventListener("click", () => {
-    list().forEach((id) => (checked[id] = false));
-    renderTabs();
-  });
-  // These are one-shot activations ("expand everything right now"), not a
-  // toggle reflecting some tracked aggregate state — so they always do the
-  // same thing regardless of the current mix of open/closed rows.
-  $(`${tab}ExpandAll`).addEventListener("click", () => {
-    list().forEach((id) => (expandedIds[id] = true));
-    renderTabs();
-  });
-  $(`${tab}CollapseAll`).addEventListener("click", () => {
-    list().forEach((id) => (expandedIds[id] = false));
+  $(`${tab}ExpandToggle`).addEventListener("click", () => {
+    const allExpanded = list().length > 0 && list().every((id) => expandedIds[id]);
+    const newState = !allExpanded;
+    list().forEach((id) => (expandedIds[id] = newState));
     renderTabs();
   });
 }
 bindListToolbar("clean");
 bindListToolbar("diff");
+
+function updateListToolbarToggles(tab: "clean" | "diff"): void {
+  const list = tab === "clean" ? cleanIds : diffIds;
+  const checkedCount = list.filter((id) => checked[id]).length;
+  const selectToggle = $(`${tab}SelectAllToggle`) as HTMLInputElement;
+  selectToggle.checked = list.length > 0 && checkedCount === list.length;
+  selectToggle.indeterminate = checkedCount > 0 && checkedCount < list.length;
+  selectToggle.disabled = list.length === 0;
+
+  const allExpanded = list.length > 0 && list.every((id) => expandedIds[id]);
+  const expandToggle = $(`${tab}ExpandToggle`) as HTMLButtonElement;
+  expandToggle.innerHTML = allExpanded ? DOUBLE_CHEVRON_UP : DOUBLE_CHEVRON_DOWN;
+  expandToggle.title = allExpanded ? "すべて折りたたむ" : "すべて展開";
+  expandToggle.disabled = list.length === 0;
+}
 
 function updateFooterButtons(): void {
   const cleanChecked = cleanIds.filter((id) => checked[id]).length;
@@ -1135,6 +1162,7 @@ function resetSwapToPaste(): void {
   swapCleanIds = [];
   swapDiffIds = [];
   swapVariantIds = [];
+  swapExcluded = [];
   swapStrayGroups.clear();
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1153,6 +1181,7 @@ function onSwapScanStarted(total: number): void {
   swapCleanIds = [];
   swapDiffIds = [];
   swapVariantIds = [];
+  swapExcluded = [];
   swapStrayGroups.clear();
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
@@ -1190,6 +1219,13 @@ function onSwapScanExcluded(msg: SwapStrayItemMsg): void {
       thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : undefined,
     });
   }
+  swapScanDone++;
+  updateSwapScanProgress();
+  renderSwapTabs();
+}
+
+function onSwapScanAlreadyLatest(name: string): void {
+  swapExcluded.push({ name, reason: "既に最新版を参照" });
   swapScanDone++;
   updateSwapScanProgress();
   renderSwapTabs();
@@ -1249,6 +1285,22 @@ document.querySelectorAll<HTMLButtonElement>("#swapResultView .tab").forEach((ta
     });
   });
 });
+
+/* ---- ライブラリスワップ: 対象外・スワップなし（見た目差分なしタブに同居） ---- */
+function swapExcludedRowHtml(entry: ExcludedEntry): string {
+  return `<div class="excluded-row"><span class="row-name" title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span><span class="excluded-reason">${escapeHtml(entry.reason)}</span></div>`;
+}
+
+function swapExcludedGroupHtml(): string {
+  const open = swapExpandedIds[SWAP_EXCLUDED_GROUP_ID] ? " open" : "";
+  return `<details class="row" data-id="${SWAP_EXCLUDED_GROUP_ID}"${open}>
+    <summary class="row-summary excluded-summary">
+      <span class="row-name">対象外・スワップなし <span class="num">(${swapExcluded.length})</span></span>
+      <span class="row-trailing">${CHEVRON_SVG}</span>
+    </summary>
+    <div class="excluded-rows">${swapExcluded.map(swapExcludedRowHtml).join("")}</div>
+  </details>`;
+}
 
 /* ---- ライブラリスワップ: 行の描画 ---- */
 function swapCleanRowHtml(id: string, justEntered: boolean): string {
@@ -1413,9 +1465,11 @@ function renderSwapTabs(justEnteredId?: string): void {
   $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
   $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
 
-  $("swapCleanList").innerHTML = swapCleanIds.length
+  let swapCleanHtml = swapCleanIds.length
     ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
     : swapEmptyState("clean");
+  if (swapExcluded.length || swapScanning) swapCleanHtml += swapExcludedGroupHtml();
+  $("swapCleanList").innerHTML = swapCleanHtml;
 
   $("swapDiffList").innerHTML = swapDiffIds.length
     ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("")
@@ -1429,6 +1483,9 @@ function renderSwapTabs(justEnteredId?: string): void {
 
   wireSwapRowEvents();
   updateSwapFooterButtons();
+  updateSwapListToolbarToggles("clean");
+  updateSwapListToolbarToggles("diff");
+  updateSwapListToolbarToggles("variant");
 }
 
 function wireSwapRowEvents(): void {
@@ -1503,6 +1560,7 @@ function handleSwapCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   } else {
     swapChecked[id] = newState;
     updateSwapFooterButtons();
+    updateSwapListToolbarToggles(tab);
   }
   swapLastClickedIndex = { tab, index };
 }
@@ -1512,26 +1570,37 @@ function bindSwapListToolbar(tab: "clean" | "diff" | "variant"): void {
   const list =
     tab === "clean" ? (): string[] => swapCleanIds : tab === "diff" ? (): string[] => swapDiffIds : (): string[] => swapVariantIds;
   const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
-  $(`${prefix}SelectAll`).addEventListener("click", () => {
-    list().forEach((id) => (swapChecked[id] = true));
+  $(`${prefix}SelectAllToggle`).addEventListener("click", () => {
+    const newState = ($(`${prefix}SelectAllToggle`) as HTMLInputElement).checked;
+    list().forEach((id) => (swapChecked[id] = newState));
     renderSwapTabs();
   });
-  $(`${prefix}SelectNone`).addEventListener("click", () => {
-    list().forEach((id) => (swapChecked[id] = false));
-    renderSwapTabs();
-  });
-  $(`${prefix}ExpandAll`).addEventListener("click", () => {
-    list().forEach((id) => (swapExpandedIds[id] = true));
-    renderSwapTabs();
-  });
-  $(`${prefix}CollapseAll`).addEventListener("click", () => {
-    list().forEach((id) => (swapExpandedIds[id] = false));
+  $(`${prefix}ExpandToggle`).addEventListener("click", () => {
+    const allExpanded = list().length > 0 && list().every((id) => swapExpandedIds[id]);
+    const newState = !allExpanded;
+    list().forEach((id) => (swapExpandedIds[id] = newState));
     renderSwapTabs();
   });
 }
 bindSwapListToolbar("clean");
 bindSwapListToolbar("diff");
 bindSwapListToolbar("variant");
+
+function updateSwapListToolbarToggles(tab: "clean" | "diff" | "variant"): void {
+  const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+  const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
+  const checkedCount = list.filter((id) => swapChecked[id]).length;
+  const selectToggle = $(`${prefix}SelectAllToggle`) as HTMLInputElement;
+  selectToggle.checked = list.length > 0 && checkedCount === list.length;
+  selectToggle.indeterminate = checkedCount > 0 && checkedCount < list.length;
+  selectToggle.disabled = list.length === 0;
+
+  const allExpanded = list.length > 0 && list.every((id) => swapExpandedIds[id]);
+  const expandToggle = $(`${prefix}ExpandToggle`) as HTMLButtonElement;
+  expandToggle.innerHTML = allExpanded ? DOUBLE_CHEVRON_UP : DOUBLE_CHEVRON_DOWN;
+  expandToggle.title = allExpanded ? "すべて折りたたむ" : "すべて展開";
+  expandToggle.disabled = list.length === 0;
+}
 
 function updateSwapFooterButtons(): void {
   const cleanChecked = swapCleanIds.filter((id) => swapChecked[id]).length;
@@ -1767,6 +1836,9 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "swap-scan-item-excluded":
       onSwapScanExcluded({ id: msg.id, name: msg.name, path: msg.path, reason: msg.reason, category: msg.category, thumbnail: msg.thumbnail });
+      break;
+    case "swap-scan-item-already-latest":
+      onSwapScanAlreadyLatest(msg.name);
       break;
     case "swap-scan-item-result":
       void onSwapScanItemResult(msg);

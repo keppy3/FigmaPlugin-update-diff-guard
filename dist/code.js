@@ -481,6 +481,10 @@
           await postSwapExcluded(inst, "\u5BFE\u5FDC\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557\u3057\u307E\u3057\u305F", "other");
           continue;
         }
+        if (target.key === main.key) {
+          post({ type: "swap-scan-item-already-latest", name: inst.name });
+          continue;
+        }
         if (swapScanCancelled) break;
         store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
         const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";

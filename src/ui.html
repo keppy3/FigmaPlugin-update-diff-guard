@@ -180,6 +180,17 @@
   .list-toolbar-sep { color: var(--divider); font-size: 10px; }
   .list-toolbar-link.push-right { margin-left: auto; }
 
+  /* すべて選択/解除（ネイティブindeterminate付きチェックボックス）・すべて展開/
+     折りたたむ（アイコン差し替えトグル）。テキストボタン2組より場所を取らない。 */
+  .list-toolbar-icon-btn {
+    display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0;
+    border: none; background: none; color: var(--accent-strong); cursor: pointer; border-radius: 4px; flex: none;
+  }
+  .list-toolbar-icon-btn:hover { background: var(--row-hover); }
+  .list-toolbar-icon-btn svg { width: 13px; height: 13px; }
+  .list-toolbar-icon-btn[disabled] { color: var(--text-faint); cursor: default; pointer-events: none; }
+  .list-toolbar-icon-btn.push-right { margin-left: auto; }
+
   /* リスト下端・一括処理ボタンの直上に置く「すべてのインスタンスを選択」用。
      チェック済みインスタンスをFigmaキャンバス上で選択する機能で、プラグイン内
      チェックボックスの一括ON/OFF（上部の.list-toolbar）とは別物なので分けて配置する。 */
@@ -372,9 +383,9 @@
 </head>
 <body>
   <div class="mode-tabs">
-    <button class="mode-tab active" data-mode="update">コンポーネント更新</button>
-    <button class="mode-tab" data-mode="swap-apply">ライブラリスワップ</button>
-    <button class="mode-tab" data-mode="swap-scan">ライブラリスキャン</button>
+    <button class="mode-tab active" data-mode="update">🔄 コンポーネント</button>
+    <button class="mode-tab" data-mode="swap-apply">🔀 ライブラリスワップ</button>
+    <button class="mode-tab" data-mode="swap-scan">🔍 ライブラリスキャン</button>
   </div>
 
   <div class="panel-body">
@@ -430,12 +441,8 @@
 
         <div class="tab-panel" data-panel="clean">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="cleanSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="cleanSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="cleanExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="cleanCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="cleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="cleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="cleanList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -450,12 +457,8 @@
 
         <div class="tab-panel hidden" data-panel="diff">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="diffSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="diffSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="diffExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="diffCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="diffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="diffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="diffList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -548,12 +551,8 @@
 
         <div class="tab-panel" data-swappanel="clean">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="swapCleanSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapCleanSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="swapCleanExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapCleanCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="swapCleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="swapCleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapCleanList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -568,12 +567,8 @@
 
         <div class="tab-panel hidden" data-swappanel="diff">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="swapDiffSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapDiffSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="swapDiffExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapDiffCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="swapDiffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="swapDiffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapDiffList"></div>
           <div class="list-toolbar list-toolbar-bottom">
@@ -592,12 +587,8 @@
 
         <div class="tab-panel hidden" data-swappanel="variant">
           <div class="list-toolbar">
-            <button class="list-toolbar-link" id="swapVariantSelectAll">すべて選択</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapVariantSelectNone">すべて解除</button>
-            <button class="list-toolbar-link push-right" id="swapVariantExpandAll">すべて展開</button>
-            <span class="list-toolbar-sep">|</span>
-            <button class="list-toolbar-link" id="swapVariantCollapseAll">すべて折りたたむ</button>
+            <input type="checkbox" class="row-check" id="swapVariantSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <button class="list-toolbar-icon-btn push-right" id="swapVariantExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapVariantList"></div>
           <div class="list-toolbar list-toolbar-bottom">
