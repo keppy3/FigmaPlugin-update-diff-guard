@@ -207,67 +207,35 @@ async function runScan(scope: ScopeMode): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-// resolvedVariableModes解決のたびにfigma.variables.getVariableCollectionByIdAsync
-// を呼ぶと同じコレクションを何度も引き直すことになるので、スキャン全体で使い回す。
-const variableCollectionCache = new Map<string, VariableCollection | null>();
-async function getCachedVariableCollection(id: string): Promise<VariableCollection | null> {
-  if (variableCollectionCache.has(id)) return variableCollectionCache.get(id) ?? null;
-  let collection: VariableCollection | null = null;
-  try {
-    collection = await figma.variables.getVariableCollectionByIdAsync(id);
-  } catch {
-    collection = null;
-  }
-  variableCollectionCache.set(id, collection);
-  return collection;
-}
-
 async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, resultType: string): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // Deliberately the simplest option available: reparent the candidate to
-  // its own page and pin it at (0, 0), rather than nesting it under the
-  // original parent. Two earlier attempts tried instead to make it visually
-  // overlap the original — same-parent + matching x/y, then that plus
-  // layoutPositioning = "ABSOLUTE" to escape Auto Layout — and both
-  // introduced real bugs. The second one throws when the original's parent
-  // isn't an Auto Layout frame (layoutPositioning isn't safely settable
-  // there), which aborted computeAndSendDiff before the cleanup below could
-  // run for *every* instance with a plain parent — candidates scattered and
-  // stayed on the canvas, and every item got excluded as a scan error
-  // instead of classified.
-  //
-  // Escaping the parent chain this way loses one thing an inline placement
-  // would have kept "for free": any explicit variable mode override set on
-  // an ancestor (e.g. a Day/Night theme frame, or a breakpoint frame) —
-  // without it, the clone renders in whatever mode the page/document
-  // defaults to, which can produce a spurious diff (or a spurious "no
-  // diff") that has nothing to do with the actual component update. So we
-  // reproduce just that part explicitly: read the instance's fully resolved
-  // mode per variable collection (inheritance already applied) and stamp it
-  // onto a throwaway anchor frame the clone lives in, instead of physically
-  // renesting under the real ancestor chain.
-  const anchor = figma.createFrame();
-  anchor.name = "Update Diff Guard — diff sandbox";
-  anchor.fills = [];
-  anchor.clipsContent = false; // ページ直下と同じく何もクリップしない（影等のはみ出しを含め従来通り書き出す）
-  (findOwningPage(inst) ?? figma.currentPage).appendChild(anchor);
-  anchor.x = 0;
-  anchor.y = 0;
-
-  const resolvedModes = inst.resolvedVariableModes;
-  for (const collectionId of Object.keys(resolvedModes)) {
-    const collection = await getCachedVariableCollection(collectionId);
-    if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
-  }
-
+  // 比較用クローンは実際の親の直下・同じ位置に挿入する（比較用インスタンスを
+  // 配置＝placeLatestOneと同じ考え方）。かつて「ページ直下に逃がす」方式に
+  // 変えたのは、同一親+一致するx/yを試したときAuto Layout親でレイアウトが
+  // 動いて見えた／layoutPositioning="ABSOLUTE"を足したら非Auto Layout親で
+  // 例外、という2つの実害があったため。ただし実際の親から切り離すと、親や
+  // インスタンス自身に設定された変数モード（Day/Night・画面サイズ等）が継承
+  // されず、それが原因の誤差分／見逃しが起きていた。要件（実アピアランスの
+  // 再現）と処理速度を優先し、レイアウトが一瞬動いて見えることは許容した上で
+  // 実際の親に戻す。layoutPositioning="ABSOLUTE"は使わない（非Auto Layout親
+  // で例外になるため）ので、Auto Layout親では完全な重なりまでは保証しない。
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  anchor.appendChild(clone);
-  clone.x = 0;
-  clone.y = 0;
+  const parent = inst.parent;
+  if (parent && "insertChild" in parent) {
+    const originalIndex = parent.children.indexOf(inst);
+    parent.insertChild(originalIndex + 1, clone);
+    clone.x = inst.x;
+    clone.y = inst.y;
+  } else {
+    // 親が取得できない/挿入不可な稀なケースのみ、従来通りページ直下に逃がす。
+    (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
+    clone.x = 0;
+    clone.y = 0;
+  }
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
@@ -288,9 +256,10 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, res
       after: afterBytes,
     });
   } finally {
-    // anchorごと削除すればcloneも道連れになる。exportAsyncが投げても、失敗した
-    // 候補ノードをキャンバスに残さず片付けられる（比較中エラー扱いになるだけ）。
-    anchor.remove();
+    // Guaranteed even if exportAsync throws above — otherwise a failed
+    // export would leave this "(diff candidate)" node stranded on the
+    // canvas instead of just excluding the instance from results.
+    clone.remove();
   }
 }
 
@@ -708,7 +677,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
         // サムネイル取得に失敗しても除外自体は続行する（見た目確認ができないだけ）
       }
     }
-    post({ type: "swap-scan-item-excluded", id: inst.id, name: inst.name, reason, category, thumbnail });
+    post({ type: "swap-scan-item-excluded", id: inst.id, name: inst.name, path: nodePath(inst), reason, category, thumbnail });
   }
 
   const targets = await collectTargets(scope);
@@ -789,6 +758,36 @@ async function handleJump(id: string): Promise<void> {
   jumpToNode(node as SceneNode);
 }
 
+// ---- キャンバス上で複数選択（「すべてのインスタンスを選択」） -------------------
+//
+// 意図的に他のハンドラから独立させた小さな機能。UIのチェックボックス選択とは
+// 無関係で、渡されたidをそのままfigma.currentPage.selectionに反映するだけ。
+// 将来的に不要と判断されたら、この関数とメッセージ種別を消すだけで撤去できる
+// ようにしている（store/wrapperStore等、他の状態には一切触れない）。
+async function handleSelectOnCanvas(ids: string[]): Promise<void> {
+  const nodes: SceneNode[] = [];
+  for (const id of ids) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (node && "type" in node && node.type !== "DOCUMENT" && node.type !== "PAGE") nodes.push(node as SceneNode);
+  }
+  if (!nodes.length) return;
+
+  const onCurrentPage = nodes.filter((n) => findOwningPage(n)?.id === figma.currentPage.id);
+  if (onCurrentPage.length) {
+    figma.currentPage.selection = onCurrentPage;
+    figma.viewport.scrollAndZoomIntoView(onCurrentPage);
+    return;
+  }
+
+  // 現在のページに対象が無ければ、対象を含む最初のページへ一回だけ移動する。
+  const firstPage = findOwningPage(nodes[0]);
+  if (!firstPage) return;
+  figma.currentPage = firstPage;
+  const onFirstPage = nodes.filter((n) => findOwningPage(n)?.id === firstPage.id);
+  figma.currentPage.selection = onFirstPage;
+  figma.viewport.scrollAndZoomIntoView(onFirstPage);
+}
+
 // ---- メッセージルーティング ---------------------------------------------
 
 interface IncomingMessage {
@@ -831,6 +830,9 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "jump":
         if (msg.id) await handleJump(msg.id);
+        break;
+      case "select-on-canvas":
+        if (msg.ids) await handleSelectOnCanvas(msg.ids);
         break;
       case "clear-markers":
         await handleClearMarkers();

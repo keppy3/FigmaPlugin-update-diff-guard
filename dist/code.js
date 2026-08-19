@@ -124,41 +124,24 @@
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  var variableCollectionCache = /* @__PURE__ */ new Map();
-  async function getCachedVariableCollection(id) {
-    var _a;
-    if (variableCollectionCache.has(id)) return (_a = variableCollectionCache.get(id)) != null ? _a : null;
-    let collection = null;
-    try {
-      collection = await figma.variables.getVariableCollectionByIdAsync(id);
-    } catch (e) {
-      collection = null;
-    }
-    variableCollectionCache.set(id, collection);
-    return collection;
-  }
   async function computeAndSendDiff(inst, latest, resultType) {
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
-    const anchor = figma.createFrame();
-    anchor.name = "Update Diff Guard \u2014 diff sandbox";
-    anchor.fills = [];
-    anchor.clipsContent = false;
-    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(anchor);
-    anchor.x = 0;
-    anchor.y = 0;
-    const resolvedModes = inst.resolvedVariableModes;
-    for (const collectionId of Object.keys(resolvedModes)) {
-      const collection = await getCachedVariableCollection(collectionId);
-      if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
-    }
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
-    anchor.appendChild(clone);
-    clone.x = 0;
-    clone.y = 0;
+    const parent = inst.parent;
+    if (parent && "insertChild" in parent) {
+      const originalIndex = parent.children.indexOf(inst);
+      parent.insertChild(originalIndex + 1, clone);
+      clone.x = inst.x;
+      clone.y = inst.y;
+    } else {
+      ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
+      clone.x = 0;
+      clone.y = 0;
+    }
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     try {
@@ -172,7 +155,7 @@
         after: afterBytes
       });
     } finally {
-      anchor.remove();
+      clone.remove();
     }
   }
   function cleanupWrapper(id) {
@@ -435,7 +418,7 @@
         } catch (e) {
         }
       }
-      post({ type: "swap-scan-item-excluded", id: inst.id, name: inst.name, reason, category, thumbnail });
+      post({ type: "swap-scan-item-excluded", id: inst.id, name: inst.name, path: nodePath(inst), reason, category, thumbnail });
     }
     const targets = await collectTargets(scope);
     post({ type: "swap-scan-started", total: targets.length });
@@ -496,6 +479,32 @@
     if (node.type === "DOCUMENT" || node.type === "PAGE") return;
     jumpToNode(node);
   }
+  async function handleSelectOnCanvas(ids) {
+    const nodes = [];
+    for (const id of ids) {
+      const node = await figma.getNodeByIdAsync(id);
+      if (node && "type" in node && node.type !== "DOCUMENT" && node.type !== "PAGE") nodes.push(node);
+    }
+    if (!nodes.length) return;
+    const onCurrentPage = nodes.filter((n) => {
+      var _a;
+      return ((_a = findOwningPage(n)) == null ? void 0 : _a.id) === figma.currentPage.id;
+    });
+    if (onCurrentPage.length) {
+      figma.currentPage.selection = onCurrentPage;
+      figma.viewport.scrollAndZoomIntoView(onCurrentPage);
+      return;
+    }
+    const firstPage = findOwningPage(nodes[0]);
+    if (!firstPage) return;
+    figma.currentPage = firstPage;
+    const onFirstPage = nodes.filter((n) => {
+      var _a;
+      return ((_a = findOwningPage(n)) == null ? void 0 : _a.id) === firstPage.id;
+    });
+    figma.currentPage.selection = onFirstPage;
+    figma.viewport.scrollAndZoomIntoView(onFirstPage);
+  }
   figma.ui.onmessage = async (msg) => {
     try {
       switch (msg.type) {
@@ -525,6 +534,9 @@
           break;
         case "jump":
           if (msg.id) await handleJump(msg.id);
+          break;
+        case "select-on-canvas":
+          if (msg.ids) await handleSelectOnCanvas(msg.ids);
           break;
         case "clear-markers":
           await handleClearMarkers();

@@ -67,18 +67,19 @@ let lastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
 interface SwapStrayItemMsg {
   id: string;
   name: string;
+  path: string; // レイヤー階層パス（例: Home / Section 02 / Card01）。展開時に連番の代わりに表示する
   reason: string;
   category: "name" | "variant" | "other";
   thumbnail?: Uint8Array; // グループの最初の1件だけcode.ts側が付けてくる
 }
-// 迷子は同名・同理由のインスタンスが大量に並びがちなので、名前＋理由の組み合わせ
+// 名前不一致は同名・同理由のインスタンスが大量に並びがちなので、名前＋理由の組み合わせ
 // でまとめて1行にする。サムネイルもグループの最初の1件分だけ（オーバーライドで
 // 個体差があっても、全件分は重くなるため代表1枚に留める）。
 interface SwapStrayGroup {
   name: string;
   reason: string;
   category: "name" | "variant" | "other";
-  ids: string[]; // グループ内の全インスタンスID。展開すると1件ずつジャンプできる
+  items: { id: string; path: string }[]; // グループ内の全インスタンス。展開すると1件ずつジャンプできる
   thumbnailUrl?: string;
 }
 const swapRows = new Map<string, RowData>();
@@ -650,6 +651,11 @@ function updateFooterButtons(): void {
   const forceChecked = diffIds.filter((id) => checked[id]).length;
   $("forceUpdateBtnLabel").textContent = `このまま一括更新(${forceChecked})`;
   ($("forceUpdateBtn") as HTMLButtonElement).disabled = forceChecked === 0;
+
+  ($("cleanSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${cleanChecked})`;
+  ($("cleanSelectCanvas") as HTMLButtonElement).disabled = cleanChecked === 0;
+  ($("diffSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${forceChecked})`;
+  ($("diffSelectCanvas") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
 /* ---- 一括更新 / 比較用インスタンスを一括配置 / 比較用インスタンスをすべて削除 / このまま一括更新 ---- */
@@ -688,6 +694,21 @@ $("forceUpdateBtn").addEventListener("click", () => {
   const targets = diffIds.filter((id) => checked[id]);
   if (targets.length === 0) return;
   openForceConfirm({ kind: "bulk", ids: targets, mode: "update" });
+});
+
+// 「すべてのインスタンスを選択」— チェック済みインスタンスをFigmaキャンバス上で
+// 選択する（プラグイン内チェックボックスの一括ON/OFFとは別機能）。将来的に
+// 廃止される可能性があるため、他の状態には触れない自己完結した1メッセージに
+// している（§code.ts handleSelectOnCanvas参照）。
+$("cleanSelectCanvas").addEventListener("click", () => {
+  const targets = cleanIds.filter((id) => checked[id]);
+  if (targets.length === 0) return;
+  post({ type: "select-on-canvas", ids: targets });
+});
+$("diffSelectCanvas").addEventListener("click", () => {
+  const targets = diffIds.filter((id) => checked[id]);
+  if (targets.length === 0) return;
+  post({ type: "select-on-canvas", ids: targets });
 });
 
 function removeResolvedId(id: string): void {
@@ -1141,13 +1162,13 @@ function onSwapScanExcluded(msg: SwapStrayItemMsg): void {
   const key = `${msg.name} ${msg.reason}`;
   const existing = swapStrayGroups.get(key);
   if (existing) {
-    existing.ids.push(msg.id);
+    existing.items.push({ id: msg.id, path: msg.path });
   } else {
     swapStrayGroups.set(key, {
       name: msg.name,
       reason: msg.reason,
       category: msg.category,
-      ids: [msg.id],
+      items: [{ id: msg.id, path: msg.path }],
       thumbnailUrl: msg.thumbnail ? dataUrlFromBytes(msg.thumbnail) : undefined,
     });
   }
@@ -1252,34 +1273,25 @@ function swapDiffRowHtml(id: string, justEntered: boolean): string {
   </details>`;
 }
 
-/* ---- ライブラリスワップ: 迷子タブ（🧭）----
+/* ---- ライブラリスワップ: 名前不一致タブ ----
    同名・同理由のインスタンスは1行にまとめ、件数とグループ代表1件分の
    サムネイル（あれば）だけを表示する。オーバーライドで個体差があっても
-   全件分のサムネイルは持たない（§code.ts参照）。 */
-// 1件しかないグループはジャンプボタン付きの単純な行のまま。複数件ある
-// グループだけ展開可能にし、開くと全インスタンスに個別ジャンプできる
-// （サムネイルは代表1枚のみ。個々のインスタンスの見た目までは出さない）。
+   全件分のサムネイルは持たない（§code.ts参照）。
+   1件のグループも含め常にアコーディオンで統一し、開くと全インスタンスへ
+   階層パス付きで個別ジャンプできる。理由文はカテゴリ見出しで意味を持つので
+   行には出さない — ただし「その他」だけは行ごとに理由が異なる（未パブリッシュ／
+   比較中エラー等）ため、行にも理由文を残す。 */
 function swapStrayRowHtml(key: string, group: SwapStrayGroup): string {
   const thumb = group.thumbnailUrl ? `<img src="${group.thumbnailUrl}" alt="">` : "";
   const nameHtml = `<div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${
-    group.ids.length > 1 ? ` <span class="stray-count">×${group.ids.length}</span>` : ""
+    group.items.length > 1 ? ` <span class="stray-count">×${group.items.length}</span>` : ""
   }</div>`;
+  const reasonHtml = group.category === "other" ? `<div class="stray-reason">${escapeHtml(group.reason)}</div>` : "";
 
-  if (group.ids.length <= 1) {
-    return `<div class="stray-row">
-      <div class="stray-thumb">${thumb}</div>
-      <div style="flex:1; min-width:0;">
-        ${nameHtml}
-        <div class="stray-reason">${escapeHtml(group.reason)}</div>
-      </div>
-      <button class="ghost-btn" data-jump="${group.ids[0]}">${JUMP_ICON}ジャンプ</button>
-    </div>`;
-  }
-
-  const instanceRows = group.ids
+  const pathRows = group.items
     .map(
-      (id, i) =>
-        `<div class="stray-instance-row"><span class="stray-instance-index">${i + 1}</span><button class="ghost-btn" data-jump="${id}">${JUMP_ICON}ジャンプ</button></div>`
+      (item) =>
+        `<div class="stray-path-row"><span class="stray-path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</span><button class="ghost-btn" data-jump="${item.id}">${JUMP_ICON}ジャンプ</button></div>`
     )
     .join("");
 
@@ -1288,35 +1300,35 @@ function swapStrayRowHtml(key: string, group: SwapStrayGroup): string {
       <div class="stray-thumb">${thumb}</div>
       <div style="flex:1; min-width:0;">
         ${nameHtml}
-        <div class="stray-reason">${escapeHtml(group.reason)}</div>
+        ${reasonHtml}
       </div>
       <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>
-    <div class="stray-instance-list">${instanceRows}</div>
+    <div class="stray-instance-list">${pathRows}</div>
   </details>`;
 }
 
 function renderSwapStray(): void {
   const entries = Array.from(swapStrayGroups.entries());
-  const byName = entries.filter(([, g]) => g.category === "name");
   const byVariant = entries.filter(([, g]) => g.category === "variant");
+  const byName = entries.filter(([, g]) => g.category === "name");
   const byOther = entries.filter(([, g]) => g.category === "other");
-  const sumCount = (gs: [string, SwapStrayGroup][]): number => gs.reduce((sum, [, g]) => sum + g.ids.length, 0);
+  const sumCount = (gs: [string, SwapStrayGroup][]): number => gs.reduce((sum, [, g]) => sum + g.items.length, 0);
   const rows = (gs: [string, SwapStrayGroup][]): string => gs.map(([key, g]) => swapStrayRowHtml(key, g)).join("");
   let html = "";
-  if (byName.length) {
-    html += `<div class="stray-group-head">名前が一致しません (${sumCount(byName)})</div>`;
-    html += rows(byName);
-  }
   if (byVariant.length) {
-    html += `<div class="stray-group-head">バリアントの組み合わせが一致しません (${sumCount(byVariant)})</div>`;
+    html += `<div class="stray-group-head">バリアント名が一致しません (${sumCount(byVariant)})</div>`;
     html += rows(byVariant);
+  }
+  if (byName.length) {
+    html += `<div class="stray-group-head">コンポーネント名が一致しません (${sumCount(byName)})</div>`;
+    html += rows(byName);
   }
   if (byOther.length) {
     html += `<div class="stray-group-head">その他 (${sumCount(byOther)})</div>`;
     html += rows(byOther);
   }
-  $("swapStrayList").innerHTML = html || '<div class="empty-state">該当なしの項目はありません</div>';
+  $("swapStrayList").innerHTML = html || '<div class="empty-state">名前不一致の項目はありません</div>';
 }
 
 function swapEmptyState(kind: "clean" | "diff"): string {
@@ -1327,7 +1339,7 @@ function swapEmptyState(kind: "clean" | "diff"): string {
 function renderSwapTabs(justEnteredId?: string): void {
   $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
   $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
-  $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.ids.length, 0)})`;
+  $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
 
   $("swapCleanList").innerHTML = swapCleanIds.length
     ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
@@ -1462,6 +1474,11 @@ function updateSwapFooterButtons(): void {
   const forceChecked = swapDiffIds.filter((id) => swapChecked[id]).length;
   $("swapForceBulkBtnLabel").textContent = `このまま一括スワップ(${forceChecked})`;
   ($("swapForceBulkBtn") as HTMLButtonElement).disabled = forceChecked === 0;
+
+  ($("swapCleanSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${cleanChecked})`;
+  ($("swapCleanSelectCanvas") as HTMLButtonElement).disabled = cleanChecked === 0;
+  ($("swapDiffSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${forceChecked})`;
+  ($("swapDiffSelectCanvas") as HTMLButtonElement).disabled = forceChecked === 0;
 }
 
 /* ---- ライブラリスワップ: 一括スワップ / 比較用インスタンスを一括配置 / このまま一括スワップ ---- */
@@ -1502,6 +1519,17 @@ $("swapForceBulkBtn").addEventListener("click", () => {
   const targets = swapDiffIds.filter((id) => swapChecked[id]);
   if (targets.length === 0) return;
   openForceConfirm({ kind: "bulk", ids: targets, mode: "swap" });
+});
+
+$("swapCleanSelectCanvas").addEventListener("click", () => {
+  const targets = swapCleanIds.filter((id) => swapChecked[id]);
+  if (targets.length === 0) return;
+  post({ type: "select-on-canvas", ids: targets });
+});
+$("swapDiffSelectCanvas").addEventListener("click", () => {
+  const targets = swapDiffIds.filter((id) => swapChecked[id]);
+  if (targets.length === 0) return;
+  post({ type: "select-on-canvas", ids: targets });
 });
 
 function removeSwapResolvedId(id: string): void {
@@ -1616,7 +1644,7 @@ window.onmessage = (event: MessageEvent) => {
       onSwapScanStarted(msg.total);
       break;
     case "swap-scan-item-excluded":
-      onSwapScanExcluded({ id: msg.id, name: msg.name, reason: msg.reason, category: msg.category, thumbnail: msg.thumbnail });
+      onSwapScanExcluded({ id: msg.id, name: msg.name, path: msg.path, reason: msg.reason, category: msg.category, thumbnail: msg.thumbnail });
       break;
     case "swap-scan-item-result":
       void onSwapScanItemResult(msg);
