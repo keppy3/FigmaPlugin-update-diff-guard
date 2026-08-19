@@ -427,10 +427,12 @@ function cleanRowHtml(id: string, justEntered: boolean): string {
   if (!row) return "";
 
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
+  const miniThumb = `<img class="row-mini-thumb" src="${row.imageUrl || ""}" alt="">`;
 
   return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
+      ${miniThumb}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
       <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>
@@ -466,10 +468,12 @@ function diffRowHtml(id: string, justEntered: boolean): string {
     : `Latest（差分${(row.diffPercent ?? 0).toFixed(1)}%）`;
 
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${checked[id] ? "checked" : ""}>`;
+  const miniThumb = `<img class="row-mini-thumb" src="${row.currentUrl || ""}" alt="">`;
 
   return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${expandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
+      ${miniThumb}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
       <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>
@@ -1194,9 +1198,11 @@ function swapCleanRowHtml(id: string, justEntered: boolean): string {
   const row = swapRows.get(id);
   if (!row) return "";
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
+  const miniThumb = `<img class="row-mini-thumb" src="${row.imageUrl || ""}" alt="">`;
   return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
+      ${miniThumb}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
       <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>
@@ -1227,9 +1233,11 @@ function swapDiffRowHtml(id: string, justEntered: boolean): string {
     ? "スワップ後（サイズ不一致）"
     : `スワップ後（差分${(row.diffPercent ?? 0).toFixed(1)}%）`;
   const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
+  const miniThumb = `<img class="row-mini-thumb" src="${row.currentUrl || ""}" alt="">`;
   return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
     <summary class="row-summary">
       ${checkbox}
+      ${miniThumb}
       <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
       <span class="row-trailing">${CHEVRON_SVG}</span>
     </summary>

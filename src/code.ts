@@ -131,6 +131,23 @@ async function findAllTaggedNodes(): Promise<SceneNode[]> {
 // while the scan was awaiting an export) is caught per-item so it can't
 // abort the rest of the scan.
 
+// importComponentByKeyAsyncは大規模ファイル・大量呼び出し時にまれに単発で
+// 失敗することがある（Figma側の一時的な負荷等、原因はこちら側からは分からない）。
+// 1回失敗しただけで「迷子」や「取得失敗」扱いにしてしまうと再スキャンしないと
+// 復旧できないので、短い間隔を空けて数回だけ再試行してから諦める。
+async function importComponentWithRetry(key: string, attempts = 3): Promise<ComponentNode> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await figma.importComponentByKeyAsync(key);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+  throw lastErr;
+}
+
 async function runScan(scope: ScopeMode): Promise<void> {
   store.clear();
   scanCancelled = false;
@@ -156,7 +173,7 @@ async function runScan(scope: ScopeMode): Promise<void> {
 
       let latest: ComponentNode;
       try {
-        latest = await figma.importComponentByKeyAsync(main.key);
+        latest = await importComponentWithRetry(main.key);
       } catch {
         post({
           type: "scan-item-excluded",
@@ -190,27 +207,65 @@ async function runScan(scope: ScopeMode): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
+// resolvedVariableModes解決のたびにfigma.variables.getVariableCollectionByIdAsync
+// を呼ぶと同じコレクションを何度も引き直すことになるので、スキャン全体で使い回す。
+const variableCollectionCache = new Map<string, VariableCollection | null>();
+async function getCachedVariableCollection(id: string): Promise<VariableCollection | null> {
+  if (variableCollectionCache.has(id)) return variableCollectionCache.get(id) ?? null;
+  let collection: VariableCollection | null = null;
+  try {
+    collection = await figma.variables.getVariableCollectionByIdAsync(id);
+  } catch {
+    collection = null;
+  }
+  variableCollectionCache.set(id, collection);
+  return collection;
+}
+
 async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, resultType: string): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
   // Deliberately the simplest option available: reparent the candidate to
-  // its own page and pin it at (0, 0). Two earlier attempts tried instead
-  // to make it visually overlap the original — same-parent + matching x/y,
-  // then that plus layoutPositioning = "ABSOLUTE" to escape Auto Layout —
-  // and both introduced real bugs. The second one throws when the
-  // original's parent isn't an Auto Layout frame (layoutPositioning isn't
-  // safely settable there), which aborted computeAndSendDiff before the
-  // cleanup below could run for *every* instance with a plain parent —
-  // candidates scattered and stayed on the canvas, and every item got
-  // excluded as a scan error instead of classified. A fixed absolute
-  // position needs none of that cleverness: no relative-coordinate math,
-  // no layout-mode-dependent property, nothing that can throw depending on
-  // what kind of parent the original happens to have.
+  // its own page and pin it at (0, 0), rather than nesting it under the
+  // original parent. Two earlier attempts tried instead to make it visually
+  // overlap the original — same-parent + matching x/y, then that plus
+  // layoutPositioning = "ABSOLUTE" to escape Auto Layout — and both
+  // introduced real bugs. The second one throws when the original's parent
+  // isn't an Auto Layout frame (layoutPositioning isn't safely settable
+  // there), which aborted computeAndSendDiff before the cleanup below could
+  // run for *every* instance with a plain parent — candidates scattered and
+  // stayed on the canvas, and every item got excluded as a scan error
+  // instead of classified.
+  //
+  // Escaping the parent chain this way loses one thing an inline placement
+  // would have kept "for free": any explicit variable mode override set on
+  // an ancestor (e.g. a Day/Night theme frame, or a breakpoint frame) —
+  // without it, the clone renders in whatever mode the page/document
+  // defaults to, which can produce a spurious diff (or a spurious "no
+  // diff") that has nothing to do with the actual component update. So we
+  // reproduce just that part explicitly: read the instance's fully resolved
+  // mode per variable collection (inheritance already applied) and stamp it
+  // onto a throwaway anchor frame the clone lives in, instead of physically
+  // renesting under the real ancestor chain.
+  const anchor = figma.createFrame();
+  anchor.name = "Update Diff Guard — diff sandbox";
+  anchor.fills = [];
+  anchor.clipsContent = false; // ページ直下と同じく何もクリップしない（影等のはみ出しを含め従来通り書き出す）
+  (findOwningPage(inst) ?? figma.currentPage).appendChild(anchor);
+  anchor.x = 0;
+  anchor.y = 0;
+
+  const resolvedModes = inst.resolvedVariableModes;
+  for (const collectionId of Object.keys(resolvedModes)) {
+    const collection = await getCachedVariableCollection(collectionId);
+    if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
+  }
+
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
+  anchor.appendChild(clone);
   clone.x = 0;
   clone.y = 0;
   clone.swapComponent(latest);
@@ -233,10 +288,9 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, res
       after: afterBytes,
     });
   } finally {
-    // Guaranteed even if exportAsync throws above — otherwise a failed
-    // export would leave this "(diff candidate)" node stranded on the
-    // canvas instead of just excluding the instance from results.
-    clone.remove();
+    // anchorごと削除すればcloneも道連れになる。exportAsyncが投げても、失敗した
+    // 候補ノードをキャンバスに残さず片付けられる（比較中エラー扱いになるだけ）。
+    anchor.remove();
   }
 }
 
@@ -505,13 +559,26 @@ async function handleScanLibrary(): Promise<void> {
     post({ type: "library-scan-progress", name: page.name, index: i + 1, total: pages.length });
 
     const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
-    for (const node of found) {
+
+    // 同期で判定できるフィルタ（他コンポーネントの内部実装／セットの子バリアント）
+    // を先にかけてから、getPublishStatusAsync（ノードごとに非同期）が必要な残りだけ
+    // Promise.allでまとめて待つ。逐次awaitだと、コンポーネント数の多いページで
+    // プログレスバーが長時間止まって見える原因になっていた（1ページ分の判定が
+    // 全部終わるまで次のlibrary-scan-progressが送れないため）。
+    const candidates = found.filter((node) => {
+      if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") return false; // セット側でchildrenとして拾い済み
+      if (hasComponentAncestor(node)) return false; // 他コンポーネントの内部実装
+      return true;
+    });
+    const statuses = await Promise.all(candidates.map((node) => node.getPublishStatusAsync()));
+
+    candidates.forEach((node, idx) => {
+      // Publish対象のコンポーネントを組み立てるための未公開ベースコンポーネント
+      // （そのファイル内でしか使わないローカル部品）を除外する。CURRENT/CHANGEDは
+      // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
+      if (statuses[idx] === "UNPUBLISHED") return;
+
       if (node.type === "COMPONENT_SET") {
-        if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
-        // Publish対象のコンポーネントを組み立てるための未公開ベースコンポーネント
-        // （そのファイル内でしか使わないローカル部品）を除外する。CURRENT/CHANGEDは
-        // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
-        if ((await node.getPublishStatusAsync()) === "UNPUBLISHED") continue;
         const variantProps: Record<string, string[]> = {};
         for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
           variantProps[prop] = info.values;
@@ -526,14 +593,9 @@ async function handleScanLibrary(): Promise<void> {
             .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
         });
       } else if (node.type === "COMPONENT") {
-        // セットの子（バリアント）はセット側でchildrenとして拾い済みなので、
-        // 単体コンポーネントとしては数えない。
-        if (node.parent?.type === "COMPONENT_SET") continue;
-        if (hasComponentAncestor(node)) continue; // 他コンポーネントの内部実装
-        if ((await node.getPublishStatusAsync()) === "UNPUBLISHED") continue; // 未公開のベース部品
         components.push({ name: node.name, key: node.key, path: nodePath(node) });
       }
-    }
+    });
   }
 
   const data: LibraryScanData = {
@@ -680,7 +742,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
 
       let target: ComponentNode;
       try {
-        target = await figma.importComponentByKeyAsync(result.key);
+        target = await importComponentWithRetry(result.key);
       } catch {
         await postSwapExcluded(inst, "対応するコンポーネントの取得に失敗しました", "other");
         continue;

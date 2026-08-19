@@ -67,6 +67,18 @@
     }
     return found;
   }
+  async function importComponentWithRetry(key, attempts = 3) {
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await figma.importComponentByKeyAsync(key);
+      } catch (err) {
+        lastErr = err;
+        if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    }
+    throw lastErr;
+  }
   async function runScan(scope) {
     store.clear();
     scanCancelled = false;
@@ -87,7 +99,7 @@
         }
         let latest;
         try {
-          latest = await figma.importComponentByKeyAsync(main.key);
+          latest = await importComponentWithRetry(main.key);
         } catch (e) {
           post({
             type: "scan-item-excluded",
@@ -112,14 +124,39 @@
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
+  var variableCollectionCache = /* @__PURE__ */ new Map();
+  async function getCachedVariableCollection(id) {
+    var _a;
+    if (variableCollectionCache.has(id)) return (_a = variableCollectionCache.get(id)) != null ? _a : null;
+    let collection = null;
+    try {
+      collection = await figma.variables.getVariableCollectionByIdAsync(id);
+    } catch (e) {
+      collection = null;
+    }
+    variableCollectionCache.set(id, collection);
+    return collection;
+  }
   async function computeAndSendDiff(inst, latest, resultType) {
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+    const anchor = figma.createFrame();
+    anchor.name = "Update Diff Guard \u2014 diff sandbox";
+    anchor.fills = [];
+    anchor.clipsContent = false;
+    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(anchor);
+    anchor.x = 0;
+    anchor.y = 0;
+    const resolvedModes = inst.resolvedVariableModes;
+    for (const collectionId of Object.keys(resolvedModes)) {
+      const collection = await getCachedVariableCollection(collectionId);
+      if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
+    }
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
-    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
+    anchor.appendChild(clone);
     clone.x = 0;
     clone.y = 0;
     clone.swapComponent(latest);
@@ -135,7 +172,7 @@
         after: afterBytes
       });
     } finally {
-      clone.remove();
+      anchor.remove();
     }
   }
   function cleanupWrapper(id) {
@@ -293,7 +330,6 @@
     return parts.join(" / ");
   }
   async function handleScanLibrary() {
-    var _a;
     const components = [];
     const componentSets = [];
     const pages = figma.root.children;
@@ -302,10 +338,16 @@
       await page.loadAsync();
       post({ type: "library-scan-progress", name: page.name, index: i + 1, total: pages.length });
       const found = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
-      for (const node of found) {
+      const candidates = found.filter((node) => {
+        var _a;
+        if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") return false;
+        if (hasComponentAncestor(node)) return false;
+        return true;
+      });
+      const statuses = await Promise.all(candidates.map((node) => node.getPublishStatusAsync()));
+      candidates.forEach((node, idx) => {
+        if (statuses[idx] === "UNPUBLISHED") return;
         if (node.type === "COMPONENT_SET") {
-          if (hasComponentAncestor(node)) continue;
-          if (await node.getPublishStatusAsync() === "UNPUBLISHED") continue;
           const variantProps = {};
           for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
             variantProps[prop] = info.values;
@@ -316,17 +358,14 @@
             path: nodePath(node),
             variantProps,
             children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
-              var _a2;
-              return { key: c.key, variantProperties: (_a2 = c.variantProperties) != null ? _a2 : {} };
+              var _a;
+              return { key: c.key, variantProperties: (_a = c.variantProperties) != null ? _a : {} };
             })
           });
         } else if (node.type === "COMPONENT") {
-          if (((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") continue;
-          if (hasComponentAncestor(node)) continue;
-          if (await node.getPublishStatusAsync() === "UNPUBLISHED") continue;
           components.push({ name: node.name, key: node.key, path: nodePath(node) });
         }
-      }
+      });
     }
     const data = {
       libraryName: figma.root.name,
@@ -423,7 +462,7 @@
         }
         let target;
         try {
-          target = await figma.importComponentByKeyAsync(result.key);
+          target = await importComponentWithRetry(result.key);
         } catch (e) {
           await postSwapExcluded(inst, "\u5BFE\u5FDC\u3059\u308B\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557\u3057\u307E\u3057\u305F", "other");
           continue;

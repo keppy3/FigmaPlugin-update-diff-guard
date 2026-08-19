@@ -189,6 +189,11 @@
   .row-name { font-size: 12px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row-trailing { width: 16px; flex: none; display: flex; align-items: center; justify-content: center; }
 
+  /* 折りたたみ時のみ表示するCurrentのミニサムネ。展開すると下にフルサイズの
+     プレビューが出るので二重表示を避けるため details[open] 側で消す。 */
+  .row-mini-thumb { width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--panel-border); background: var(--row-hover); object-fit: contain; flex: none; }
+  details.row[open] .row-mini-thumb { display: none; }
+
   details.row > summary { list-style: none; }
   details.row > summary::-webkit-details-marker { display: none; }
   .row-summary { display: flex; align-items: center; gap: 9px; padding: 11px 14px; cursor: pointer; }
