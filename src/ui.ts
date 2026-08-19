@@ -917,8 +917,19 @@ $("scanLibStartBtn").addEventListener("click", () => {
   $("scanLibCompStep").textContent = "";
   ($("scanLibPageFill").style as CSSStyleDeclaration).width = "0%";
   ($("scanLibCompFill").style as CSSStyleDeclaration).width = "0%";
+  ($("scanLibCancelBtn") as HTMLButtonElement).disabled = false;
   post({ type: "scan-library" });
 });
+
+$("scanLibCancelBtn").addEventListener("click", (e) => {
+  (e.currentTarget as HTMLButtonElement).disabled = true;
+  post({ type: "cancel-library-scan" });
+});
+
+function onLibraryScanCancelled(): void {
+  showScanLib("intro");
+  showToast("スキャンを中止しました");
+}
 
 // ファイル全体のPublish済みコンポーネント数を事前に取得するAPIは無いが、
 // 「全ページ数」と「今のページのメインコンポーネント候補数」はどちらも
@@ -1830,6 +1841,9 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "library-scan-done":
       onLibraryScanDone(msg.data, msg.coverThumbnail);
+      break;
+    case "library-scan-cancelled":
+      onLibraryScanCancelled();
       break;
     case "swap-scan-started":
       onSwapScanStarted(msg.total);

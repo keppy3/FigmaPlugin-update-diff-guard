@@ -13,6 +13,7 @@
   var wrapperStore = /* @__PURE__ */ new Map();
   var scanCancelled = false;
   var swapScanCancelled = false;
+  var libraryScanCancelled = false;
   function post(msg) {
     figma.ui.postMessage(msg);
   }
@@ -330,13 +331,16 @@
     return parts.join(" / ");
   }
   async function handleScanLibrary() {
+    libraryScanCancelled = false;
     const components = [];
     const componentSets = [];
     const BATCH_SIZE = 30;
     const pages = figma.root.children;
     const totalPages = pages.length;
     let pagesCompleted = 0;
+    post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: 0, pageTotal: 0 });
     for (const page of pages) {
+      if (libraryScanCancelled) break;
       await page.loadAsync();
       const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
       const candidates = pageFound.filter((node) => {
@@ -348,6 +352,7 @@
       let pageScanned = 0;
       post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
       for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        if (libraryScanCancelled) break;
         const batch = candidates.slice(i, i + BATCH_SIZE);
         const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
         batch.forEach((node, idx) => {
@@ -375,8 +380,13 @@
         pageScanned += batch.length;
         post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
       }
+      if (libraryScanCancelled) break;
       pagesCompleted++;
       post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: candidates.length, pageTotal: candidates.length });
+    }
+    if (libraryScanCancelled) {
+      post({ type: "library-scan-cancelled" });
+      return;
     }
     const data = {
       libraryName: figma.root.name,
@@ -579,6 +589,9 @@
           break;
         case "scan-library":
           await handleScanLibrary();
+          break;
+        case "cancel-library-scan":
+          libraryScanCancelled = true;
           break;
         case "scan-swap":
           if (msg.scope && msg.mappings) await handleScanSwap(msg.scope, msg.mappings);

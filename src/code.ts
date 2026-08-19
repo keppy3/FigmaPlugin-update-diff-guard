@@ -54,6 +54,7 @@ const store = new Map<string, StoredItem>();
 const wrapperStore = new Map<string, FrameNode>();
 let scanCancelled = false;
 let swapScanCancelled = false;
+let libraryScanCancelled = false;
 
 function post(msg: Record<string, unknown>): void {
   figma.ui.postMessage(msg);
@@ -541,6 +542,7 @@ function nodePath(node: BaseNode): string {
 }
 
 async function handleScanLibrary(): Promise<void> {
+  libraryScanCancelled = false;
   const components: LibraryComponentEntry[] = [];
   const componentSets: LibraryComponentSetEntry[] = [];
 
@@ -558,7 +560,15 @@ async function handleScanLibrary(): Promise<void> {
   const totalPages = pages.length;
   let pagesCompleted = 0;
 
+  // pages.lengthは同期で確定済みなので、ループに入る前に一度送っておく。
+  // これが無いと、1ページ目のpage.loadAsync()＋findAllWithCriteria()（大きな
+  // ページだと同期のツリー探索だけで数秒かかることがある）が終わるまで、
+  // 上段ゲージにすら数字が出ない空白期間ができてしまう。
+  post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: 0, pageTotal: 0 });
+
   for (const page of pages) {
+    if (libraryScanCancelled) break;
+
     await page.loadAsync();
     const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
     const candidates = pageFound.filter((node) => {
@@ -571,6 +581,8 @@ async function handleScanLibrary(): Promise<void> {
     post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
 
     for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+      if (libraryScanCancelled) break;
+
       const batch = candidates.slice(i, i + BATCH_SIZE);
       const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
 
@@ -604,8 +616,15 @@ async function handleScanLibrary(): Promise<void> {
       post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
     }
 
+    if (libraryScanCancelled) break;
+
     pagesCompleted++;
     post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: candidates.length, pageTotal: candidates.length });
+  }
+
+  if (libraryScanCancelled) {
+    post({ type: "library-scan-cancelled" });
+    return;
   }
 
   const data: LibraryScanData = {
@@ -903,6 +922,9 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "scan-library":
         await handleScanLibrary();
+        break;
+      case "cancel-library-scan":
+        libraryScanCancelled = true;
         break;
       case "scan-swap":
         if (msg.scope && msg.mappings) await handleScanSwap(msg.scope, msg.mappings);

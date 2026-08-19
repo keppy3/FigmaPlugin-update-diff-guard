@@ -163,6 +163,9 @@
   }
   .scan-cancel-btn:hover { background: var(--row-hover); }
   .scan-cancel-btn[disabled] { opacity: 0.5; cursor: default; }
+  /* .busyのような中央寄せ縦積みレイアウトの中で使うとき、margin-left:autoが
+     邪魔になる（右端に寄ってしまう）ので打ち消す */
+  .scan-cancel-btn.centered { margin-left: 0; }
 
   .tabs { display: flex; border-bottom: 1px solid var(--panel-border); background: var(--chrome-bg); flex: none; }
   .tab { flex: 1; padding: 11px 8px; font-size: 12px; font-weight: 700; text-align: center; background: none; border: none; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -632,6 +635,7 @@
           <div class="busy-step" id="scanLibCompStep"></div>
           <div class="progress-track"><div class="progress-fill" id="scanLibCompFill"></div></div>
         </div>
+        <button class="scan-cancel-btn centered" id="scanLibCancelBtn">キャンセル</button>
       </div>
 
       <div class="setup hidden" id="scanLibResultView">
