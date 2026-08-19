@@ -148,6 +148,13 @@
   .busy-gauge { width: 100%; display: flex; flex-direction: column; gap: 6px; }
   .progress-track { width: 100%; height: 4px; border-radius: 3px; background: var(--divider); overflow: hidden; }
   .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.2s ease; }
+  /* 分母が無いフェーズ（ライブラリスキャンのノード探索中）用の不確定進捗表示。
+     幅%は主張せず、動き続けていること自体で処理継続を伝える。 */
+  .progress-fill.indeterminate { width: 30% !important; animation: indeterminate-slide 1.1s ease-in-out infinite; }
+  @keyframes indeterminate-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .progress-fill.indeterminate { animation: none; width: 100% !important; opacity: 0.35; }
+  }
 
   /* ---- Result screen ---- */
   #resultView, #swapResultView { display: flex; flex-direction: column; min-height: 0; flex: 1; }
@@ -1550,6 +1557,7 @@
     $("scanLibCompStep").textContent = "";
     $("scanLibPageFill").style.width = "0%";
     $("scanLibCompFill").style.width = "0%";
+    $("scanLibCompFill").classList.remove("indeterminate");
     $("scanLibCancelBtn").disabled = false;
     post({ type: "scan-library" });
   });
@@ -1561,9 +1569,18 @@
     showScanLib("intro");
     showToast("\u30B9\u30AD\u30E3\u30F3\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
   }
-  function onLibraryScanProgress(pagesCompleted, totalPages, pageScanned, pageTotal) {
+  function onLibraryScanPageGauge(pagesCompleted, totalPages) {
     $("scanLibPageStep").textContent = `\u30B9\u30AD\u30E3\u30F3\u6E08\u307F\u30DA\u30FC\u30B8 ${pagesCompleted} / ${totalPages}`;
     $("scanLibPageFill").style.width = totalPages ? `${Math.round(pagesCompleted / totalPages * 100)}%` : "0%";
+  }
+  function onLibraryScanWalkProgress(pagesCompleted, totalPages, nodesVisited) {
+    onLibraryScanPageGauge(pagesCompleted, totalPages);
+    $("scanLibCompStep").textContent = `\u30CE\u30FC\u30C9\u3092\u63A2\u7D22\u4E2D\u2026 (${nodesVisited.toLocaleString()}\u4EF6\u78BA\u8A8D)`;
+    $("scanLibCompFill").classList.add("indeterminate");
+  }
+  function onLibraryScanProgress(pagesCompleted, totalPages, pageScanned, pageTotal) {
+    onLibraryScanPageGauge(pagesCompleted, totalPages);
+    $("scanLibCompFill").classList.remove("indeterminate");
     $("scanLibCompStep").textContent = `\u30B9\u30AD\u30E3\u30F3\u6E08\u307F\u306E\u30E1\u30A4\u30F3\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8 ${pageScanned} / ${pageTotal}`;
     $("scanLibCompFill").style.width = pageTotal ? `${Math.round(pageScanned / pageTotal * 100)}%` : "0%";
   }
@@ -2306,6 +2323,9 @@
         break;
       case "library-scan-progress":
         onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
+        break;
+      case "library-scan-walk-progress":
+        onLibraryScanWalkProgress(msg.pagesCompleted, msg.totalPages, msg.nodesVisited);
         break;
       case "library-scan-done":
         onLibraryScanDone(msg.data, msg.coverThumbnail);

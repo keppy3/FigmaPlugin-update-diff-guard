@@ -512,22 +512,6 @@ interface LibraryScanData {
   coverThumbnail?: string; // data URL。ui.ts側でbytesから変換して埋め込む（§handleScanLibrary参照）
 }
 
-// 別のコンポーネント（またはコンポーネントセット）の内部に埋め込まれている
-// Component/ComponentSetかどうかを判定する。例えば「Button」コンポーネント
-// の内部でアイコン切り替え用に小さなComponentSetが使われているようなケース。
-// これは実在するノードなのでfindAllWithCriteriaは律儀に拾ってしまうが、
-// 独立して公開されるライブラリ資産ではなく、あくまで親コンポーネントの実装
-// 詳細なので、トップレベルの資産としては数えない（Analyticsの「Total
-// components」とも一致しなくなるため）。
-function hasComponentAncestor(node: BaseNode): boolean {
-  let p = node.parent;
-  while (p && p.type !== "PAGE") {
-    if (p.type === "COMPONENT" || p.type === "COMPONENT_SET") return true;
-    p = p.parent;
-  }
-  return false;
-}
-
 // デバッグ用: 「ページ名 / 親フレーム名 / ... / ノード名」の形でレイヤーパスを
 // 組み立てる。想定外に大量カウントされている原因を、名前だけでなく所在（どの
 // ページ・どの階層にあるか）まで見えるようにして調査するためのもの。
@@ -548,34 +532,74 @@ async function handleScanLibrary(): Promise<void> {
 
   // Figmaには「このファイルにPublish済みコンポーネントが何件あるか」を事前に
   // 一発で返すAPIが無い（Web版Analyticsのような集計は取れない）ので、ファイル
-  // 全体を分母にした単一の%は組めない。が、「全ページ数」と「今のページの
-  // コンポーネント候補数」はどちらもそのページに到達した時点で確定する値
-  // なので、二段のゲージにすればどちらも正確な分母を持てる：
+  // 全体を分母にした単一の%は組めない。実測すると、探索フェーズ（後述）が
+  // スキャン時間の9割以上を占めることがわかった — つまり「今のページの
+  // コンポーネント候補数」という分母自体が判明する頃には、ほぼ処理が終わって
+  // いる。分母は正確でも、それが判明するタイミングが遅すぎてゲージとして
+  // 意味を成していなかった。
+  //
   //   上段 = スキャン済みページ数 / 全ページ数（figma.root.children.lengthで
-  //          最初から判明済み）
-  //   下段 = 確認済みメインコンポーネント数 / 今のページのメインコンポーネント数
-  //          （そのページのfindAllWithCriteriaが終わった時点で判明）
+  //          最初から判明済み・そのまま維持）
+  //   下段 = 探索フェーズの間は「これまでに確認したノード数」という伸びる
+  //          カウンタ（分母は不明なので不確定進捗として表示）。候補が
+  //          確定してPublish状態を確認するフェーズに入ったら、従来通り
+  //          確認済み/このページの候補数という実際の%表示に切り替わる。
   const BATCH_SIZE = 30;
   const pages = figma.root.children;
   const totalPages = pages.length;
   let pagesCompleted = 0;
 
   // pages.lengthは同期で確定済みなので、ループに入る前に一度送っておく。
-  // これが無いと、1ページ目のpage.loadAsync()＋findAllWithCriteria()（大きな
-  // ページだと同期のツリー探索だけで数秒かかることがある）が終わるまで、
-  // 上段ゲージにすら数字が出ない空白期間ができてしまう。
   post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: 0, pageTotal: 0 });
+
+  // Figma純正のfindAllWithCriteria単発呼び出しは完全に同期・ノンストップで、
+  // 呼び出し中は一切進捗を出せずキャンセルも効かない。代わりに自前でノードを
+  // 1つずつ再帰的に訪問し、一定件数ごとに一度setTimeout(0)でイベントループに
+  // 制御を返す。これにより (a) 訪問済みノード数を都度UIに送れる、(b) 巨大な
+  // ページの途中でもキャンセルが効くようになる、の両方が同時に手に入る。
+  // Component/ComponentSetに当たった時点でそれ以上潜らない（内部のバリアント
+  // や入れ子アイコン用ComponentSet等を独立資産として二重に数えないため —
+  // 以前のhasComponentAncestorフィルタと同じ効果を、探索しないことで実現）。
+  // Instanceの内部も潜らない（本物のComponent/ComponentSet定義がInstance内に
+  // 現れることは無く、必ずNested Instanceとして表現されるため、潜っても
+  // 絶対に見つからない — 無駄な探索を削るだけの最適化）。
+  let nodesVisited = 0;
+  let sinceYield = 0;
+  const YIELD_EVERY = 250;
+
+  async function walk(node: SceneNode, out: (ComponentNode | ComponentSetNode)[]): Promise<void> {
+    if (libraryScanCancelled) return;
+    nodesVisited++;
+    sinceYield++;
+    if (sinceYield >= YIELD_EVERY) {
+      sinceYield = 0;
+      post({ type: "library-scan-walk-progress", pagesCompleted, totalPages, nodesVisited });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+
+    if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+      out.push(node);
+      return;
+    }
+    if (node.type === "INSTANCE") return;
+    if ("children" in node) {
+      for (const child of (node as unknown as ChildrenMixin).children) {
+        if (libraryScanCancelled) return;
+        await walk(child as SceneNode, out);
+      }
+    }
+  }
 
   for (const page of pages) {
     if (libraryScanCancelled) break;
 
     await page.loadAsync();
-    const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
-    const candidates = pageFound.filter((node) => {
-      if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") return false; // セット側でchildrenとして拾い済み
-      if (hasComponentAncestor(node)) return false; // 他コンポーネントの内部実装
-      return true;
-    });
+    const candidates: (ComponentNode | ComponentSetNode)[] = [];
+    for (const child of page.children) {
+      if (libraryScanCancelled) break;
+      await walk(child, candidates);
+    }
+    if (libraryScanCancelled) break;
 
     let pageScanned = 0;
     post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });

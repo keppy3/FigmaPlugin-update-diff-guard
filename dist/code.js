@@ -313,14 +313,6 @@
     post({ type: "markers-cleared", count, ids: clearedIds });
     post({ type: "marker-count", count: 0 });
   }
-  function hasComponentAncestor(node) {
-    let p = node.parent;
-    while (p && p.type !== "PAGE") {
-      if (p.type === "COMPONENT" || p.type === "COMPONENT_SET") return true;
-      p = p.parent;
-    }
-    return false;
-  }
   function nodePath(node) {
     const parts = [];
     let p = node;
@@ -339,16 +331,39 @@
     const totalPages = pages.length;
     let pagesCompleted = 0;
     post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned: 0, pageTotal: 0 });
+    let nodesVisited = 0;
+    let sinceYield = 0;
+    const YIELD_EVERY = 250;
+    async function walk(node, out) {
+      if (libraryScanCancelled) return;
+      nodesVisited++;
+      sinceYield++;
+      if (sinceYield >= YIELD_EVERY) {
+        sinceYield = 0;
+        post({ type: "library-scan-walk-progress", pagesCompleted, totalPages, nodesVisited });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+        out.push(node);
+        return;
+      }
+      if (node.type === "INSTANCE") return;
+      if ("children" in node) {
+        for (const child of node.children) {
+          if (libraryScanCancelled) return;
+          await walk(child, out);
+        }
+      }
+    }
     for (const page of pages) {
       if (libraryScanCancelled) break;
       await page.loadAsync();
-      const pageFound = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
-      const candidates = pageFound.filter((node) => {
-        var _a;
-        if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") return false;
-        if (hasComponentAncestor(node)) return false;
-        return true;
-      });
+      const candidates = [];
+      for (const child of page.children) {
+        if (libraryScanCancelled) break;
+        await walk(child, candidates);
+      }
+      if (libraryScanCancelled) break;
       let pageScanned = 0;
       post({ type: "library-scan-progress", pagesCompleted, totalPages, pageScanned, pageTotal: candidates.length });
       for (let i = 0; i < candidates.length; i += BATCH_SIZE) {

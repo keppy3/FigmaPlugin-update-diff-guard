@@ -917,6 +917,7 @@ $("scanLibStartBtn").addEventListener("click", () => {
   $("scanLibCompStep").textContent = "";
   ($("scanLibPageFill").style as CSSStyleDeclaration).width = "0%";
   ($("scanLibCompFill").style as CSSStyleDeclaration).width = "0%";
+  $("scanLibCompFill").classList.remove("indeterminate");
   ($("scanLibCancelBtn") as HTMLButtonElement).disabled = false;
   post({ type: "scan-library" });
 });
@@ -931,16 +932,28 @@ function onLibraryScanCancelled(): void {
   showToast("スキャンを中止しました");
 }
 
-// ファイル全体のPublish済みコンポーネント数を事前に取得するAPIは無いが、
-// 「全ページ数」と「今のページのメインコンポーネント候補数」はどちらも
-// そのページに到達した時点で確定する値なので、二段のゲージにすればどちらも
-// 正確な分母を持てる（§code.ts handleScanLibrary参照）。
-// 上段＝スキャン済みページ数／全ページ、下段＝確認済み／今のページの候補数。
-function onLibraryScanProgress(pagesCompleted: number, totalPages: number, pageScanned: number, pageTotal: number): void {
+// 上段＝スキャン済みページ数／全ページ（常に正確な分母）。下段は2フェーズ
+// あり、実測でスキャン時間の9割以上を占める探索フェーズの間は分母が無い
+// （ファイル全体のノード数は事前にわからない）ので、不確定進捗（伸びる
+// カウンタ＋アニメーションするバー）として見せ、Publish状態を確認する
+// 短いフェーズに入ったら実際の%表示に切り替える（§code.ts handleScanLibrary
+// 参照）。
+function onLibraryScanPageGauge(pagesCompleted: number, totalPages: number): void {
   $("scanLibPageStep").textContent = `スキャン済みページ ${pagesCompleted} / ${totalPages}`;
   ($("scanLibPageFill").style as CSSStyleDeclaration).width = totalPages
     ? `${Math.round((pagesCompleted / totalPages) * 100)}%`
     : "0%";
+}
+
+function onLibraryScanWalkProgress(pagesCompleted: number, totalPages: number, nodesVisited: number): void {
+  onLibraryScanPageGauge(pagesCompleted, totalPages);
+  $("scanLibCompStep").textContent = `ノードを探索中… (${nodesVisited.toLocaleString()}件確認)`;
+  $("scanLibCompFill").classList.add("indeterminate");
+}
+
+function onLibraryScanProgress(pagesCompleted: number, totalPages: number, pageScanned: number, pageTotal: number): void {
+  onLibraryScanPageGauge(pagesCompleted, totalPages);
+  $("scanLibCompFill").classList.remove("indeterminate");
   $("scanLibCompStep").textContent = `スキャン済みのメインコンポーネント ${pageScanned} / ${pageTotal}`;
   ($("scanLibCompFill").style as CSSStyleDeclaration).width = pageTotal ? `${Math.round((pageScanned / pageTotal) * 100)}%` : "0%";
 }
@@ -1838,6 +1851,9 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "library-scan-progress":
       onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
+      break;
+    case "library-scan-walk-progress":
+      onLibraryScanWalkProgress(msg.pagesCompleted, msg.totalPages, msg.nodesVisited);
       break;
     case "library-scan-done":
       onLibraryScanDone(msg.data, msg.coverThumbnail);

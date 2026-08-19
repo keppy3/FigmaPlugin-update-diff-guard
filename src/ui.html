@@ -148,6 +148,13 @@
   .busy-gauge { width: 100%; display: flex; flex-direction: column; gap: 6px; }
   .progress-track { width: 100%; height: 4px; border-radius: 3px; background: var(--divider); overflow: hidden; }
   .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 3px; transition: width 0.2s ease; }
+  /* 分母が無いフェーズ（ライブラリスキャンのノード探索中）用の不確定進捗表示。
+     幅%は主張せず、動き続けていること自体で処理継続を伝える。 */
+  .progress-fill.indeterminate { width: 30% !important; animation: indeterminate-slide 1.1s ease-in-out infinite; }
+  @keyframes indeterminate-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .progress-fill.indeterminate { animation: none; width: 100% !important; opacity: 0.35; }
+  }
 
   /* ---- Result screen ---- */
   #resultView, #swapResultView { display: flex; flex-direction: column; min-height: 0; flex: 1; }
