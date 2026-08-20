@@ -100,6 +100,10 @@
   .mode-tabs .mode-tab.active { color: var(--text); background: var(--panel-bg); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .mode-tabs .mode-tab[disabled] { opacity: 0.4; cursor: default; }
   .mode-tabs .mode-tab[disabled]:hover { color: var(--text-muted); }
+  /* 他の機能でスキャン開始済み（＝開始画面より先）のときのロック表示。
+     disabledとは違いクリックは常に受け付け、確認モーダル経由でリセットする。 */
+  .mode-tabs .mode-tab.locked { opacity: 0.55; }
+  .mode-tabs .mode-tab.locked:hover { opacity: 0.8; }
 
   .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .mode-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -393,7 +397,7 @@
 </head>
 <body>
   <div class="mode-tabs">
-    <button class="mode-tab active" data-mode="update">🔄 コンポーネント</button>
+    <button class="mode-tab active" data-mode="update">🔄 インスタンス更新</button>
     <button class="mode-tab" data-mode="swap-apply">🔀 ライブラリスワップ</button>
     <button class="mode-tab" data-mode="swap-scan">🔍 ライブラリスキャン</button>
   </div>
@@ -982,68 +986,88 @@
     "swap-apply": $("swapApplyModePane"),
     "swap-scan": $("swapScanModePane")
   };
-  function updateModeTabsDisabledState() {
-    const updateBusy = scanning || !views.busy.classList.contains("hidden");
-    const swapBusy = swapScanning || !swapViews.busy.classList.contains("hidden");
-    const anyOtherModeBusy = updateBusy || swapBusy;
-    document.querySelectorAll(".mode-tab").forEach((btn) => {
-      const mode = btn.dataset.mode;
-      if (mode === "update") {
-        btn.disabled = mode === currentMode ? !views.busy.classList.contains("hidden") && !scanning : anyOtherModeBusy;
-      } else if (mode === "swap-apply") {
-        btn.disabled = mode === currentMode ? !swapViews.busy.classList.contains("hidden") && !swapScanning : anyOtherModeBusy;
-      } else {
-        btn.disabled = anyOtherModeBusy;
-      }
-    });
-  }
   function isAtModeStart(mode) {
     if (mode === "update") return !views.setup.classList.contains("hidden");
     if (mode === "swap-apply") return !swapViews.paste.classList.contains("hidden");
     if (mode === "swap-scan") return !scanLibViews.intro.classList.contains("hidden");
     return true;
   }
-  function performModeReset(mode) {
-    if (mode === "update") {
-      if (scanning) {
-        post({ type: "cancel-scan" });
-        return;
-      }
-      resetToSetup();
-    } else if (mode === "swap-apply") {
-      if (swapScanning) {
-        post({ type: "cancel-swap-scan" });
-        return;
-      }
-      resetSwapToPaste();
-    } else if (mode === "swap-scan") {
-      showScanLib("intro");
-    }
+  function updateModeTabsDisabledState() {
+    const locked = !isAtModeStart(currentMode);
+    document.querySelectorAll(".mode-tab").forEach((btn) => {
+      const mode = btn.dataset.mode;
+      btn.disabled = false;
+      btn.classList.toggle("locked", locked && mode !== currentMode);
+    });
   }
-  var pendingResetMode = null;
-  function openResetConfirm(mode) {
-    pendingResetMode = mode;
-    $("resetConfirmOverlay").classList.remove("hidden");
-  }
-  $("resetConfirmCancel").addEventListener("click", () => {
-    $("resetConfirmOverlay").classList.add("hidden");
-    pendingResetMode = null;
-  });
-  $("resetConfirmOk").addEventListener("click", () => {
-    $("resetConfirmOverlay").classList.add("hidden");
-    if (pendingResetMode) performModeReset(pendingResetMode);
-    pendingResetMode = null;
-  });
-  function selectMode(mode) {
-    if (mode === currentMode) {
-      if (!isAtModeStart(mode)) openResetConfirm(mode);
-      return;
-    }
+  function switchModePane(mode) {
     currentMode = mode;
     Object.keys(modePanes).forEach((m) => modePanes[m].classList.toggle("hidden", m !== mode));
     document.querySelectorAll(".mode-tab").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
+    updateModeTabsDisabledState();
+  }
+  var pendingSwitchAfterCancel = null;
+  function consumePendingSwitch() {
+    if (pendingSwitchAfterCancel) {
+      switchModePane(pendingSwitchAfterCancel);
+      pendingSwitchAfterCancel = null;
+    }
+  }
+  function performModeReset(resetMode, switchToMode) {
+    if (resetMode === "update") {
+      if (scanning) {
+        pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
+        post({ type: "cancel-scan" });
+        return;
+      }
+      resetToSetup();
+    } else if (resetMode === "swap-apply") {
+      if (swapScanning) {
+        pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
+        post({ type: "cancel-swap-scan" });
+        return;
+      }
+      resetSwapToPaste();
+    } else if (resetMode === "swap-scan") {
+      if (!$("scanLibBusyView").classList.contains("hidden")) {
+        pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
+        post({ type: "cancel-library-scan" });
+        return;
+      }
+      showScanLib("intro");
+    }
+    if (switchToMode !== resetMode) switchModePane(switchToMode);
+  }
+  var pendingResetMode = null;
+  var pendingResetSwitchTo = null;
+  function openResetConfirm(resetMode, switchToMode) {
+    pendingResetMode = resetMode;
+    pendingResetSwitchTo = switchToMode;
+    $("resetConfirmOverlay").classList.remove("hidden");
+  }
+  $("resetConfirmCancel").addEventListener("click", () => {
+    $("resetConfirmOverlay").classList.add("hidden");
+    pendingResetMode = null;
+    pendingResetSwitchTo = null;
+  });
+  $("resetConfirmOk").addEventListener("click", () => {
+    $("resetConfirmOverlay").classList.add("hidden");
+    if (pendingResetMode) performModeReset(pendingResetMode, pendingResetSwitchTo != null ? pendingResetSwitchTo : pendingResetMode);
+    pendingResetMode = null;
+    pendingResetSwitchTo = null;
+  });
+  function selectMode(mode) {
+    if (mode === currentMode) {
+      if (!isAtModeStart(mode)) openResetConfirm(mode, mode);
+      return;
+    }
+    if (!isAtModeStart(currentMode)) {
+      openResetConfirm(currentMode, mode);
+      return;
+    }
+    switchModePane(mode);
   }
   document.querySelectorAll(".mode-tab").forEach((btn) => {
     btn.addEventListener("click", () => selectMode(btn.dataset.mode));
@@ -1179,6 +1203,7 @@
     if (cancelled) {
       resetToSetup();
       showToast("\u30B9\u30AD\u30E3\u30F3\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
+      consumePendingSwitch();
     } else {
       renderTabs();
     }
@@ -1549,6 +1574,7 @@
     Object.keys(scanLibViews).forEach(
       (k) => scanLibViews[k].classList.toggle("hidden", k !== name)
     );
+    updateModeTabsDisabledState();
   }
   var lastLibraryScanJson = "";
   $("scanLibStartBtn").addEventListener("click", () => {
@@ -1568,6 +1594,7 @@
   function onLibraryScanCancelled() {
     showScanLib("intro");
     showToast("\u30B9\u30AD\u30E3\u30F3\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
+    consumePendingSwitch();
   }
   function onLibraryScanPageGauge(pagesCompleted, totalPages) {
     $("scanLibPageStep").textContent = `\u30B9\u30AD\u30E3\u30F3\u6E08\u307F\u30DA\u30FC\u30B8 ${pagesCompleted} / ${totalPages}`;
@@ -1853,6 +1880,7 @@
     if (cancelled) {
       resetSwapToPaste();
       showToast("\u30B9\u30AD\u30E3\u30F3\u3092\u4E2D\u6B62\u3057\u307E\u3057\u305F");
+      consumePendingSwitch();
     } else {
       renderSwapTabs();
     }

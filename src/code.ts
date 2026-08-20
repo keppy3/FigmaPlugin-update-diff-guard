@@ -149,6 +149,19 @@ async function importComponentWithRetry(key: string, attempts = 3): Promise<Comp
   throw lastErr;
 }
 
+// clone/insertChild/removeをインスタンス数分連続で繰り返すと、Figmaクライアント
+// が長時間ノンストップで処理し続ける形になり実機で不安定になった実害があった
+// （§computeAndSendDiffの変遷コメント参照）。一定件数ごとに一度イベントループへ
+// 制御を返すことで、処理速度をほぼ落とさずにクライアントの応答性を保つ。
+const SCAN_YIELD_EVERY = 20;
+async function maybeYieldScan(counter: { value: number }): Promise<void> {
+  counter.value++;
+  if (counter.value >= SCAN_YIELD_EVERY) {
+    counter.value = 0;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 async function runScan(scope: ScopeMode): Promise<void> {
   store.clear();
   scanCancelled = false;
@@ -156,6 +169,7 @@ async function runScan(scope: ScopeMode): Promise<void> {
   const targets = await collectTargets(scope);
   post({ type: "scan-started", total: targets.length });
 
+  const yieldCounter = { value: 0 };
   for (const inst of targets) {
     if (scanCancelled) break;
 
@@ -202,25 +216,11 @@ async function runScan(scope: ScopeMode): Promise<void> {
     }
 
     figma.commitUndo();
+    await maybeYieldScan(yieldCounter);
   }
 
   post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
-}
-
-// resolvedVariableModes解決のたびにfigma.variables.getVariableCollectionByIdAsync
-// を呼ぶと同じコレクションを何度も引き直すことになるので、スキャン全体で使い回す。
-const variableCollectionCache = new Map<string, VariableCollection | null>();
-async function getCachedVariableCollection(id: string): Promise<VariableCollection | null> {
-  if (variableCollectionCache.has(id)) return variableCollectionCache.get(id) ?? null;
-  let collection: VariableCollection | null = null;
-  try {
-    collection = await figma.variables.getVariableCollectionByIdAsync(id);
-  } catch {
-    collection = null;
-  }
-  variableCollectionCache.set(id, collection);
-  return collection;
 }
 
 async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, resultType: string): Promise<void> {
@@ -228,38 +228,38 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, res
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
 
-  // 比較用クローンの置き場所の変遷（ページ規模のスキャンで壊れないことを最優先
-  // に決めた）:
-  //   1. ページ直下に逃がす（最初の実装）— 軽いが、親のDay/Night等の変数
-  //      モードを継承できず誤差分の原因になっていた。
-  //   2. 実際の親に挿入（一時期の実装）— 見た目の重なりと変数モード継承は
-  //      正しくなったが、ページ規模のスキャンで大量のインスタンスに対して
-  //      繰り返すと、Auto Layout親のレイアウト再計算が都度走り、実機で
-  //      Figmaクライアントが「Something went wrong」で落ちる実害が出た。
-  //   3. 現在: ページ直下に置く軽さを保ったまま、instanceが実際に解決していた
-  //      モード（inst.resolvedVariableModes — 祖先からの継承分・インスタンス
-  //      自身の明示オーバーライド分の両方を合成済み）を、書き出し用の
-  //      使い捨てアンカーフレームに明示指定として複製する。物理的に実階層へ
-  //      再ネストしなくても、見た目上は同じ状態を安全に再現できる。
-  const anchor = figma.createFrame();
-  anchor.name = "Update Diff Guard — diff sandbox";
-  anchor.fills = [];
-  anchor.clipsContent = false; // ページ直下と同じく何もクリップしない（影等のはみ出しを含め従来通り書き出す）
-  (findOwningPage(inst) ?? figma.currentPage).appendChild(anchor);
-  anchor.x = 0;
-  anchor.y = 0;
-
-  const resolvedModes = inst.resolvedVariableModes;
-  for (const collectionId of Object.keys(resolvedModes)) {
-    const collection = await getCachedVariableCollection(collectionId);
-    if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
-  }
-
+  // 比較用クローンの置き場所の変遷:
+  //   1. ページ直下に逃がす — 軽いが、親のDay/Night等の変数モードを継承
+  //      できず誤差分の原因になっていた。
+  //   2. inst.resolvedVariableModesを使い捨てアンカーフレームに明示複製 —
+  //      変数モードのAPI解決自体は通っていたはずだが、実機で「見た目は
+  //      Figma純正の比較用インスタンス配置（＝実際の親に挿入）とは異なる
+  //      誤差分」が実際に見つかった。Auto Layoutのfill containerサイジング
+  //      など、変数モード以外にも実際の親階層でしか再現できない要因がある
+  //      ため、近似では不十分と判断。
+  //   3. 現在: 実際の親の直下・同じ位置に挿入する（比較用インスタンスを
+  //      配置＝placeLatestOneと同じ考え方で、そちらは実機で正しい結果を
+  //      出している）。ページ規模のスキャンで大量のインスタンスに対して
+  //      繰り返すとFigmaクライアントが不安定になった実害があったため、
+  //      呼び出し元のスキャンループ側で一定件数ごとにイベントループへ制御を
+  //      返す形で緩和している（§runScan/handleScanSwap参照）。
+  //      layoutPositioning="ABSOLUTE"は使わない（非Auto Layout親で例外に
+  //      なる上、fill containerサイジングの再現も失われるため）ので、
+  //      Auto Layout親では完全な重なりまでは保証しない。
   const clone = inst.clone();
   clone.name = `${inst.name} (diff candidate)`;
-  anchor.appendChild(clone);
-  clone.x = 0;
-  clone.y = 0;
+  const parent = inst.parent;
+  if (parent && "insertChild" in parent) {
+    const originalIndex = parent.children.indexOf(inst);
+    parent.insertChild(originalIndex + 1, clone);
+    clone.x = inst.x;
+    clone.y = inst.y;
+  } else {
+    // 親が取得できない/挿入不可な稀なケースのみ、ページ直下に逃がす。
+    (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
+    clone.x = 0;
+    clone.y = 0;
+  }
   clone.swapComponent(latest);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
@@ -280,9 +280,10 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, res
       after: afterBytes,
     });
   } finally {
-    // anchorごと削除すればcloneも道連れになる。exportAsyncが投げても、失敗した
-    // 候補ノードをキャンバスに残さず片付けられる（比較中エラー扱いになるだけ）。
-    anchor.remove();
+    // Guaranteed even if exportAsync throws above — otherwise a failed
+    // export would leave this "(diff candidate)" node stranded on the
+    // canvas instead of just excluding the instance from results.
+    clone.remove();
   }
 }
 
@@ -781,6 +782,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
   const targets = await collectTargets(scope);
   post({ type: "swap-scan-started", total: targets.length });
 
+  const yieldCounter = { value: 0 };
   for (const inst of targets) {
     if (swapScanCancelled) break;
 
@@ -834,6 +836,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
     }
 
     figma.commitUndo();
+    await maybeYieldScan(yieldCounter);
   }
 
   post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });

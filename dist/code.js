@@ -80,11 +80,20 @@
     }
     throw lastErr;
   }
+  var SCAN_YIELD_EVERY = 20;
+  async function maybeYieldScan(counter) {
+    counter.value++;
+    if (counter.value >= SCAN_YIELD_EVERY) {
+      counter.value = 0;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
   async function runScan(scope) {
     store.clear();
     scanCancelled = false;
     const targets = await collectTargets(scope);
     post({ type: "scan-started", total: targets.length });
+    const yieldCounter = { value: 0 };
     for (const inst of targets) {
       if (scanCancelled) break;
       try {
@@ -121,45 +130,29 @@
         post({ type: "scan-item-excluded", name: inst.name, reason: "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09" });
       }
       figma.commitUndo();
+      await maybeYieldScan(yieldCounter);
     }
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
-  }
-  var variableCollectionCache = /* @__PURE__ */ new Map();
-  async function getCachedVariableCollection(id) {
-    var _a;
-    if (variableCollectionCache.has(id)) return (_a = variableCollectionCache.get(id)) != null ? _a : null;
-    let collection = null;
-    try {
-      collection = await figma.variables.getVariableCollectionByIdAsync(id);
-    } catch (e) {
-      collection = null;
-    }
-    variableCollectionCache.set(id, collection);
-    return collection;
   }
   async function computeAndSendDiff(inst, latest, resultType) {
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
-    const anchor = figma.createFrame();
-    anchor.name = "Update Diff Guard \u2014 diff sandbox";
-    anchor.fills = [];
-    anchor.clipsContent = false;
-    ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(anchor);
-    anchor.x = 0;
-    anchor.y = 0;
-    const resolvedModes = inst.resolvedVariableModes;
-    for (const collectionId of Object.keys(resolvedModes)) {
-      const collection = await getCachedVariableCollection(collectionId);
-      if (collection) anchor.setExplicitVariableModeForCollection(collection, resolvedModes[collectionId]);
-    }
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
-    anchor.appendChild(clone);
-    clone.x = 0;
-    clone.y = 0;
+    const parent = inst.parent;
+    if (parent && "insertChild" in parent) {
+      const originalIndex = parent.children.indexOf(inst);
+      parent.insertChild(originalIndex + 1, clone);
+      clone.x = inst.x;
+      clone.y = inst.y;
+    } else {
+      ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
+      clone.x = 0;
+      clone.y = 0;
+    }
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     try {
@@ -173,7 +166,7 @@
         after: afterBytes
       });
     } finally {
-      anchor.remove();
+      clone.remove();
     }
   }
   function cleanupWrapper(id) {
@@ -478,6 +471,7 @@
     }
     const targets = await collectTargets(scope);
     post({ type: "swap-scan-started", total: targets.length });
+    const yieldCounter = { value: 0 };
     for (const inst of targets) {
       if (swapScanCancelled) break;
       try {
@@ -519,6 +513,7 @@
         await postSwapExcluded(inst, "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09", "other");
       }
       figma.commitUndo();
+      await maybeYieldScan(yieldCounter);
     }
     post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });

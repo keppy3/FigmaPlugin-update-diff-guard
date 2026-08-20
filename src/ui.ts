@@ -158,9 +158,13 @@ function resetToSetup(): void {
 }
 
 /* ---- 最上部モードタブ（更新／ライブラリスワップ／ライブラリスキャン） ----
-   専用のヘッダーバー・リセットボタンは持たない。再度アクティブなタブを
-   クリックすると、そのモードの中身をリセットする（旧resetBtnの役割を兼ねる）。
-   スキャン中・一括処理中は他タブへの移動もブロックする（処理を見失わないため）。 */
+   専用のヘッダーバー・リセットボタンは持たない。3機能とも同時に作業することは
+   想定しておらず、store/wrapperStoreをモード間で共有している都合上、異なる
+   モードのスキャンが同時に走ると同一インスタンスへの書き込みが競合しかねない
+   （後勝ちで片方のスキャン結果が静かに壊れる）。そのため、いずれかのモードが
+   開始画面より先に進んだ時点で他の2タブは「ロック」（グレーアウトはするが
+   クリックは常に受け付け、確認モーダル経由で今のモードをリセットしてから
+   切り替える）状態にする。 */
 type Mode = "update" | "swap-apply" | "swap-scan";
 let currentMode: Mode = "update";
 const modePanes: Record<Mode, HTMLElement> = {
@@ -169,31 +173,9 @@ const modePanes: Record<Mode, HTMLElement> = {
   "swap-scan": $("swapScanModePane"),
 };
 
-function updateModeTabsDisabledState(): void {
-  const updateBusy = scanning || !views.busy.classList.contains("hidden");
-  const swapBusy = swapScanning || !swapViews.busy.classList.contains("hidden");
-  const anyOtherModeBusy = updateBusy || swapBusy;
-  document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
-    const mode = btn.dataset.mode as Mode;
-    if (mode === "update") {
-      btn.disabled = mode === currentMode
-        ? !views.busy.classList.contains("hidden") && !scanning
-        : anyOtherModeBusy;
-    } else if (mode === "swap-apply") {
-      btn.disabled = mode === currentMode
-        ? !swapViews.busy.classList.contains("hidden") && !swapScanning
-        : anyOtherModeBusy;
-    } else {
-      // swap-scan自体はブロッキング処理を持たないが、他モードが処理中なら
-      // やはり移動をブロックする。
-      btn.disabled = anyOtherModeBusy;
-    }
-  });
-}
-
 // そのモードがまだ「何も失うものがない」初期画面（更新のスキャン前画面／
 // スワップの貼り付け画面／ライブラリスキャンの説明画面）を表示中かどうか。
-// 真なら再クリックしても確認なしで即リセットする（実質何も起きない）。
+// 真なら、そのタブを操作しても確認なしで即座に反映してよい。
 function isAtModeStart(mode: Mode): boolean {
   if (mode === "update") return !views.setup.classList.contains("hidden");
   if (mode === "swap-apply") return !swapViews.paste.classList.contains("hidden");
@@ -201,54 +183,100 @@ function isAtModeStart(mode: Mode): boolean {
   return true;
 }
 
-function performModeReset(mode: Mode): void {
-  if (mode === "update") {
+function updateModeTabsDisabledState(): void {
+  const locked = !isAtModeStart(currentMode);
+  document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
+    const mode = btn.dataset.mode as Mode;
+    btn.disabled = false; // ロック中も常にクリック可能（確認モーダル経由でのみ切り替え・リセットする）
+    btn.classList.toggle("locked", locked && mode !== currentMode);
+  });
+}
+
+function switchModePane(mode: Mode): void {
+  currentMode = mode;
+  (Object.keys(modePanes) as Mode[]).forEach((m) => modePanes[m].classList.toggle("hidden", m !== mode));
+  document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === mode);
+  });
+  updateModeTabsDisabledState();
+}
+
+// リセット確認→キャンセル送信、の後にスキャン中止が非同期で完了するのを
+// 待ってから切り替える必要があるケース用（§onScanFinished/onSwapScanFinished/
+// onLibraryScanCancelled参照）。同一モードへの再クリック（その場でリセット
+// するだけ）ならnullのまま。
+let pendingSwitchAfterCancel: Mode | null = null;
+
+function consumePendingSwitch(): void {
+  if (pendingSwitchAfterCancel) {
+    switchModePane(pendingSwitchAfterCancel);
+    pendingSwitchAfterCancel = null;
+  }
+}
+
+function performModeReset(resetMode: Mode, switchToMode: Mode): void {
+  if (resetMode === "update") {
     if (scanning) {
-      post({ type: "cancel-scan" }); // onScanFinished(true) will land us on setup
+      pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
+      post({ type: "cancel-scan" }); // onScanFinished(true)で戻ってきてから切り替える
       return;
     }
     resetToSetup();
-  } else if (mode === "swap-apply") {
+  } else if (resetMode === "swap-apply") {
     if (swapScanning) {
+      pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
       post({ type: "cancel-swap-scan" });
       return;
     }
     resetSwapToPaste();
-  } else if (mode === "swap-scan") {
+  } else if (resetMode === "swap-scan") {
+    if (!$("scanLibBusyView").classList.contains("hidden")) {
+      pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
+      post({ type: "cancel-library-scan" });
+      return;
+    }
     showScanLib("intro");
   }
+  if (switchToMode !== resetMode) switchModePane(switchToMode);
 }
 
 let pendingResetMode: Mode | null = null;
+let pendingResetSwitchTo: Mode | null = null;
 
-function openResetConfirm(mode: Mode): void {
-  pendingResetMode = mode;
+function openResetConfirm(resetMode: Mode, switchToMode: Mode): void {
+  pendingResetMode = resetMode;
+  pendingResetSwitchTo = switchToMode;
   $("resetConfirmOverlay").classList.remove("hidden");
 }
 
 $("resetConfirmCancel").addEventListener("click", () => {
   $("resetConfirmOverlay").classList.add("hidden");
   pendingResetMode = null;
+  pendingResetSwitchTo = null;
 });
 
 $("resetConfirmOk").addEventListener("click", () => {
   $("resetConfirmOverlay").classList.add("hidden");
-  if (pendingResetMode) performModeReset(pendingResetMode);
+  if (pendingResetMode) performModeReset(pendingResetMode, pendingResetSwitchTo ?? pendingResetMode);
   pendingResetMode = null;
+  pendingResetSwitchTo = null;
 });
 
 function selectMode(mode: Mode): void {
   if (mode === currentMode) {
     // 既に初期画面ならリセットしても何も変わらないので確認不要。それ以外
     // （スキャン中・結果表示中）は誤操作で今のセッションを失わないよう確認を挟む。
-    if (!isAtModeStart(mode)) openResetConfirm(mode);
+    if (!isAtModeStart(mode)) openResetConfirm(mode, mode);
     return;
   }
-  currentMode = mode;
-  (Object.keys(modePanes) as Mode[]).forEach((m) => modePanes[m].classList.toggle("hidden", m !== mode));
-  document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.mode === mode);
-  });
+  if (!isAtModeStart(currentMode)) {
+    // 今のモードがまだ何か持っている状態から別モードへ切り替えようとした
+    // ケース。3機能を横断して同時作業することは想定していない（store/
+    // wrapperStoreの競合リスク）ため、ここも同じ確認モーダルに乗せる。
+    openResetConfirm(currentMode, mode);
+    return;
+  }
+  switchModePane(mode);
 }
 
 document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
@@ -415,6 +443,7 @@ function onScanFinished(cancelled: boolean): void {
   if (cancelled) {
     resetToSetup();
     showToast("スキャンを中止しました");
+    consumePendingSwitch();
   } else {
     renderTabs();
   }
@@ -893,6 +922,7 @@ function showScanLib(name: keyof typeof scanLibViews): void {
   (Object.keys(scanLibViews) as Array<keyof typeof scanLibViews>).forEach((k) =>
     scanLibViews[k].classList.toggle("hidden", k !== name)
   );
+  updateModeTabsDisabledState();
 }
 
 interface LibraryScanData {
@@ -930,6 +960,7 @@ $("scanLibCancelBtn").addEventListener("click", (e) => {
 function onLibraryScanCancelled(): void {
   showScanLib("intro");
   showToast("スキャンを中止しました");
+  consumePendingSwitch();
 }
 
 // 上段＝スキャン済みページ数／全ページ（常に正確な分母）。下段は2フェーズ
@@ -1293,6 +1324,7 @@ function onSwapScanFinished(cancelled: boolean): void {
   if (cancelled) {
     resetSwapToPaste();
     showToast("スキャンを中止しました");
+    consumePendingSwitch();
   } else {
     renderSwapTabs();
   }

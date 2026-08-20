@@ -100,6 +100,10 @@
   .mode-tabs .mode-tab.active { color: var(--text); background: var(--panel-bg); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .mode-tabs .mode-tab[disabled] { opacity: 0.4; cursor: default; }
   .mode-tabs .mode-tab[disabled]:hover { color: var(--text-muted); }
+  /* 他の機能でスキャン開始済み（＝開始画面より先）のときのロック表示。
+     disabledとは違いクリックは常に受け付け、確認モーダル経由でリセットする。 */
+  .mode-tabs .mode-tab.locked { opacity: 0.55; }
+  .mode-tabs .mode-tab.locked:hover { opacity: 0.8; }
 
   .panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .mode-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -393,7 +397,7 @@
 </head>
 <body>
   <div class="mode-tabs">
-    <button class="mode-tab active" data-mode="update">🔄 コンポーネント</button>
+    <button class="mode-tab active" data-mode="update">🔄 インスタンス更新</button>
     <button class="mode-tab" data-mode="swap-apply">🔀 ライブラリスワップ</button>
     <button class="mode-tab" data-mode="swap-scan">🔍 ライブラリスキャン</button>
   </div>
