@@ -502,7 +502,7 @@ function diffRowButtons(id: string): string {
     return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">比較用インスタンスを配置</button></div>`;
   }
   const eyeIcon = latestVisible[id] ? EYE_OPEN : EYE_CLOSED;
-  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">比較用インスタンスを削除</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}表示/非表示</button></div>`;
+  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-remove-latest="${id}">比較用インスタンスを削除</button><button class="ghost-btn" data-toggle-latest="${id}">${eyeIcon}表示切替</button></div>`;
 }
 
 function diffRowHtml(id: string, justEntered: boolean): string {
@@ -1388,7 +1388,7 @@ function swapDiffRowButtons(id: string): string {
     return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-swap-place-latest="${id}">比較用インスタンスを配置</button></div>`;
   }
   const eyeIcon = swapLatestVisible[id] ? EYE_OPEN : EYE_CLOSED;
-  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-swap-remove-latest="${id}">比較用インスタンスを削除</button><button class="ghost-btn" data-swap-toggle-latest="${id}">${eyeIcon}表示/非表示</button></div>`;
+  return `<div class="row-buttons">${forceBtn}<button class="ghost-btn danger" data-swap-remove-latest="${id}">比較用インスタンスを削除</button><button class="ghost-btn" data-swap-toggle-latest="${id}">${eyeIcon}表示切替</button></div>`;
 }
 
 function swapDiffRowHtml(id: string, justEntered: boolean): string {
