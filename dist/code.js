@@ -182,7 +182,7 @@
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
       return;
     }
-    if (jump) jumpToNode(item.instance);
+    if (jump) await jumpToNode(item.instance);
     let latest;
     try {
       latest = await importComponentWithRetry(item.latestKey);
@@ -253,7 +253,7 @@
   }
   async function handlePlaceLatest(id) {
     const item = store.get(id);
-    if (item) jumpToNode(item.instance);
+    if (item) await jumpToNode(item.instance);
     const ok = await placeLatestOne(id);
     if (!ok) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
@@ -458,6 +458,7 @@
     return { key: comp.key };
   }
   async function handleScanSwap(scope, mappings) {
+    store.clear();
     swapScanCancelled = false;
     const nameToComponent = /* @__PURE__ */ new Map();
     const nameToSet = /* @__PURE__ */ new Map();
@@ -536,9 +537,9 @@
     while (p.parent && p.parent.type !== "DOCUMENT") p = p.parent;
     return p.type === "PAGE" ? p : null;
   }
-  function jumpToNode(node) {
+  async function jumpToNode(node) {
     const page = findOwningPage(node);
-    if (page) figma.currentPage = page;
+    if (page) await figma.setCurrentPageAsync(page);
     figma.currentPage.selection = [node];
     figma.viewport.scrollAndZoomIntoView([node]);
   }
@@ -546,7 +547,7 @@
     const node = await figma.getNodeByIdAsync(id);
     if (!node || !("type" in node)) return;
     if (node.type === "DOCUMENT" || node.type === "PAGE") return;
-    jumpToNode(node);
+    await jumpToNode(node);
   }
   async function handleSelectOnCanvas(ids) {
     const nodes = [];
@@ -566,7 +567,7 @@
     }
     const firstPage = findOwningPage(nodes[0]);
     if (!firstPage) return;
-    figma.currentPage = firstPage;
+    await figma.setCurrentPageAsync(firstPage);
     const onFirstPage = nodes.filter((n) => {
       var _a;
       return ((_a = findOwningPage(n)) == null ? void 0 : _a.id) === firstPage.id;

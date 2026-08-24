@@ -321,7 +321,7 @@ async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): 
   }
   // For individual "このまま更新" only: jump before the write so the user
   // sees what they're about to affect, not just what they just affected.
-  if (jump) jumpToNode(item.instance);
+  if (jump) await jumpToNode(item.instance);
 
   // スキャン時に解決したComponentNodeをそのまま使い回さず、適用の直前に毎回
   // キーで取り直す（§StoredItem.latestKeyのコメント参照）。
@@ -427,7 +427,7 @@ async function handlePlaceLatest(id: string): Promise<void> {
   // wrapper even exists — Current's position is exactly where the wrapper
   // will land, so there's no need to wait for placement to finish.
   const item = store.get(id);
-  if (item) jumpToNode(item.instance);
+  if (item) await jumpToNode(item.instance);
 
   const ok = await placeLatestOne(id);
   if (!ok) {
@@ -770,6 +770,12 @@ function resolveSwapTarget(
 }
 
 async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Promise<void> {
+  // runScan（更新モード）はstore.clear()から始まるが、こちらは無かった —
+  // 別モードへの切り替え時にui.ts側の表示はリセットされてもcode.ts側のstore
+  // には前のスキャンのエントリが残り得た（同じidが再度マッチすれば上書きされて
+  // 実害は無いが、マッチしなかった分は不要になったエントリとしてメモリに
+  // 残り続ける）。スキャンごとに必ずクリーンな状態から始める。
+  store.clear();
   swapScanCancelled = false;
 
   // 複数ライブラリを一度に追加できる。名前が衝突した場合は「先に追加した方」が
@@ -881,9 +887,12 @@ function findOwningPage(node: BaseNode): PageNode | null {
   return p.type === "PAGE" ? (p as PageNode) : null;
 }
 
-function jumpToNode(node: SceneNode): void {
+async function jumpToNode(node: SceneNode): Promise<void> {
   const page = findOwningPage(node);
-  if (page) figma.currentPage = page;
+  // manifestを"documentAccess":"dynamic-page"にした都合上、figma.currentPage
+  // への直接代入（同期セッター）はもう使えない（例外を投げる）。読み取りは
+  // 問題ないので、変更にだけこちらを使う。
+  if (page) await figma.setCurrentPageAsync(page);
   figma.currentPage.selection = [node];
   figma.viewport.scrollAndZoomIntoView([node]);
 }
@@ -895,7 +904,7 @@ async function handleJump(id: string): Promise<void> {
   const node = await figma.getNodeByIdAsync(id);
   if (!node || !("type" in node)) return;
   if (node.type === "DOCUMENT" || node.type === "PAGE") return;
-  jumpToNode(node as SceneNode);
+  await jumpToNode(node as SceneNode);
 }
 
 // ---- キャンバス上で複数選択（「すべてのインスタンスを選択」） -------------------
@@ -922,7 +931,7 @@ async function handleSelectOnCanvas(ids: string[]): Promise<void> {
   // 現在のページに対象が無ければ、対象を含む最初のページへ一回だけ移動する。
   const firstPage = findOwningPage(nodes[0]);
   if (!firstPage) return;
-  figma.currentPage = firstPage;
+  await figma.setCurrentPageAsync(firstPage);
   const onFirstPage = nodes.filter((n) => findOwningPage(n)?.id === firstPage.id);
   figma.currentPage.selection = onFirstPage;
   figma.viewport.scrollAndZoomIntoView(onFirstPage);
