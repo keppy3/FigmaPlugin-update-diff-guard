@@ -216,12 +216,14 @@
   .sort-key-btn svg.sort-icon { width: 10px; height: 10px; color: var(--text-faint); flex: none; }
   .sort-key-btn svg.caret { width: 8px; height: 8px; color: var(--text-faint); flex: none; }
   .sort-key-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .sort-key-btn[disabled] { opacity: 0.45; cursor: default; pointer-events: none; }
   .sort-dir-btn {
     display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px;
     border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--text-muted); cursor: pointer; flex: none; padding: 0;
   }
   .sort-dir-btn svg { width: 11px; height: 11px; }
   .sort-dir-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .sort-dir-btn[disabled] { opacity: 0.45; cursor: default; pointer-events: none; }
 
   .sort-menu {
     position: absolute; top: calc(100% + 4px); left: 0; width: 200px; background: var(--panel-bg);
@@ -1303,6 +1305,7 @@
     Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
     sortState.key = "default";
     sortState.dir = "asc";
+    setSortControlsEnabled(false);
     scanning = true;
     scanTotal = total;
     scanDone = 0;
@@ -1318,10 +1321,14 @@
     $("scanProgressFill").style.width = scanTotal ? `${Math.round(scanDone / scanTotal * 100)}%` : "0%";
   }
   function onScanExcluded(name, reason) {
+    var _a;
     excluded.push({ name, reason });
     scanDone++;
     updateScanProgress();
-    renderTabs();
+    const group = $("cleanList").querySelector(`[data-id="${EXCLUDED_GROUP_ID}"]`);
+    (_a = group == null ? void 0 : group.querySelector(".excluded-rows")) == null ? void 0 : _a.insertAdjacentHTML("beforeend", excludedRowHtml({ name, reason }));
+    const countEl = group == null ? void 0 : group.querySelector(".num");
+    if (countEl) countEl.textContent = `(${excluded.length})`;
   }
   async function onScanItemResult(msg) {
     const row = await processDiff(msg);
@@ -1334,10 +1341,15 @@
     checked[row.id] = true;
     scanDone++;
     updateScanProgress();
-    renderTabs(row.id);
+    $("cleanCount").textContent = `(${cleanIds.length})`;
+    $("diffCount").textContent = `(${diffIds.length})`;
+    appendResultRow(row.status === "clean" ? "clean" : "diff", row.id);
+    updateFooterButtons();
+    updateListToolbarToggles(row.status === "clean" ? "clean" : "diff");
   }
   function onScanFinished(cancelled) {
     scanning = false;
+    if (!swapScanning) setSortControlsEnabled(true);
     $("scanProgressStrip").classList.add("hidden");
     if (cancelled) {
       resetToSetup();
@@ -1446,26 +1458,26 @@
     updateSortControl("clean");
     updateSortControl("diff");
   }
-  function wireRowEvents() {
-    document.querySelectorAll("#resultView .row").forEach((details) => {
-      details.addEventListener("toggle", () => {
-        const id = details.getAttribute("data-id");
-        if (id) expandedIds[id] = details.open;
+  function wireRow(row) {
+    if (row instanceof HTMLDetailsElement) {
+      row.addEventListener("toggle", () => {
+        const id = row.getAttribute("data-id");
+        if (id) expandedIds[id] = row.open;
       });
-    });
-    document.querySelectorAll("#resultView .row-check").forEach((cb) => {
+    }
+    row.querySelectorAll(".row-check").forEach((cb) => {
       cb.addEventListener("click", (e) => {
         e.stopPropagation();
         handleCheckboxClick(cb, e);
       });
     });
-    document.querySelectorAll("#resultView [data-jump]").forEach((btn) => {
+    row.querySelectorAll("[data-jump]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         post({ type: "jump", id: btn.getAttribute("data-jump") });
       });
     });
-    document.querySelectorAll("#resultView [data-individual-update]").forEach((btn) => {
+    row.querySelectorAll("[data-individual-update]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         btn.disabled = true;
@@ -1473,14 +1485,14 @@
         post({ type: "apply", id: btn.getAttribute("data-individual-update") });
       });
     });
-    document.querySelectorAll("#resultView [data-individual-force]").forEach((btn) => {
+    row.querySelectorAll("[data-individual-force]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = btn.getAttribute("data-individual-force");
         openForceConfirm({ kind: "single", id, btn, mode: "update" });
       });
     });
-    document.querySelectorAll("#resultView [data-place-latest]").forEach((btn) => {
+    row.querySelectorAll("[data-place-latest]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         btn.disabled = true;
@@ -1488,18 +1500,35 @@
         post({ type: "place-latest", id: btn.getAttribute("data-place-latest") });
       });
     });
-    document.querySelectorAll("#resultView [data-toggle-latest]").forEach((btn) => {
+    row.querySelectorAll("[data-toggle-latest]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         post({ type: "toggle-latest", id: btn.getAttribute("data-toggle-latest") });
       });
     });
-    document.querySelectorAll("#resultView [data-remove-latest]").forEach((btn) => {
+    row.querySelectorAll("[data-remove-latest]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         post({ type: "remove-latest", id: btn.getAttribute("data-remove-latest") });
       });
     });
+  }
+  function wireRowEvents() {
+    document.querySelectorAll("#resultView .row").forEach(wireRow);
+  }
+  function appendResultRow(kind, id) {
+    var _a;
+    const listEl = $(kind === "clean" ? "cleanList" : "diffList");
+    (_a = listEl.querySelector(".empty-state")) == null ? void 0 : _a.remove();
+    const html = kind === "clean" ? cleanRowHtml(id, true) : diffRowHtml(id, true);
+    const excludedAnchor = kind === "clean" ? listEl.querySelector(`[data-id="${EXCLUDED_GROUP_ID}"]`) : null;
+    if (excludedAnchor) {
+      excludedAnchor.insertAdjacentHTML("beforebegin", html);
+    } else {
+      listEl.insertAdjacentHTML("beforeend", html);
+    }
+    const newRow = excludedAnchor ? excludedAnchor.previousElementSibling : listEl.lastElementChild;
+    if (newRow) wireRow(newRow);
   }
   function handleCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");
@@ -1605,6 +1634,12 @@
     dirBtn.innerHTML = isAsc ? SORT_DIR_ASC : SORT_DIR_DESC;
     dirBtn.title = isAsc ? "\u964D\u9806\u306B\u5207\u308A\u66FF\u3048" : "\u6607\u9806\u306B\u5207\u308A\u66FF\u3048";
     if (openSortMenuTab === tab) openSortMenu(tab);
+  }
+  function setSortControlsEnabled(enabled) {
+    ["clean", "diff", "swapClean", "swapDiff", "swapVariant"].forEach((tab) => {
+      $(`${tab}SortKeyBtn`).disabled = !enabled;
+      $(`${tab}SortDirBtn`).disabled = !enabled;
+    });
   }
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
@@ -2039,6 +2074,7 @@
     Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
     sortState.key = "default";
     sortState.dir = "asc";
+    setSortControlsEnabled(false);
     swapScanning = true;
     swapScanTotal = total;
     swapScanDone = 0;
@@ -2072,10 +2108,14 @@
     renderSwapTabs();
   }
   function onSwapScanAlreadyLatest(name) {
+    var _a;
     swapExcluded.push({ name, reason: "\u65E2\u306B\u6700\u65B0\u7248\u3092\u53C2\u7167" });
     swapScanDone++;
     updateSwapScanProgress();
-    renderSwapTabs();
+    const group = $("swapCleanList").querySelector(`[data-id="${SWAP_EXCLUDED_GROUP_ID}"]`);
+    (_a = group == null ? void 0 : group.querySelector(".excluded-rows")) == null ? void 0 : _a.insertAdjacentHTML("beforeend", swapExcludedRowHtml({ name, reason: "\u65E2\u306B\u6700\u65B0\u7248\u3092\u53C2\u7167" }));
+    const countEl = group == null ? void 0 : group.querySelector(".num");
+    if (countEl) countEl.textContent = `(${swapExcluded.length})`;
   }
   async function onSwapScanItemResult(msg) {
     const row = await processDiff(msg);
@@ -2088,7 +2128,11 @@
     swapChecked[row.id] = true;
     swapScanDone++;
     updateSwapScanProgress();
-    renderSwapTabs(row.id);
+    $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
+    $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
+    appendSwapResultRow(row.status === "clean" ? "clean" : "diff", row.id);
+    updateSwapFooterButtons();
+    updateSwapListToolbarToggles(row.status === "clean" ? "clean" : "diff");
   }
   async function onSwapScanItemVariantResult(msg) {
     const row = await processDiff(msg);
@@ -2113,6 +2157,7 @@
   }
   function onSwapScanFinished(cancelled) {
     swapScanning = false;
+    if (!scanning) setSortControlsEnabled(true);
     $("swapScanProgressStrip").classList.add("hidden");
     if (cancelled) {
       resetSwapToPaste();
@@ -2294,26 +2339,26 @@
     updateSortControl("swapDiff");
     updateSortControl("swapVariant");
   }
-  function wireSwapRowEvents() {
-    document.querySelectorAll("#swapResultView .row").forEach((details) => {
-      details.addEventListener("toggle", () => {
-        const id = details.getAttribute("data-id");
-        if (id) swapExpandedIds[id] = details.open;
+  function wireSwapRow(row) {
+    if (row instanceof HTMLDetailsElement) {
+      row.addEventListener("toggle", () => {
+        const id = row.getAttribute("data-id");
+        if (id) swapExpandedIds[id] = row.open;
       });
-    });
-    document.querySelectorAll("#swapResultView .row-check").forEach((cb) => {
+    }
+    row.querySelectorAll(".row-check").forEach((cb) => {
       cb.addEventListener("click", (e) => {
         e.stopPropagation();
         handleSwapCheckboxClick(cb, e);
       });
     });
-    document.querySelectorAll("#swapResultView [data-jump]").forEach((btn) => {
+    row.querySelectorAll("[data-jump]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         post({ type: "jump", id: btn.getAttribute("data-jump") });
       });
     });
-    document.querySelectorAll("#swapResultView [data-swap-individual-update]").forEach((btn) => {
+    row.querySelectorAll("[data-swap-individual-update]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         btn.disabled = true;
@@ -2321,14 +2366,14 @@
         post({ type: "apply", id: btn.getAttribute("data-swap-individual-update") });
       });
     });
-    document.querySelectorAll("#swapResultView [data-swap-individual-force]").forEach((btn) => {
+    row.querySelectorAll("[data-swap-individual-force]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = btn.getAttribute("data-swap-individual-force");
         openForceConfirm({ kind: "single", id, btn, mode: "swap" });
       });
     });
-    document.querySelectorAll("#swapResultView [data-swap-place-latest]").forEach((btn) => {
+    row.querySelectorAll("[data-swap-place-latest]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         btn.disabled = true;
@@ -2336,18 +2381,35 @@
         post({ type: "place-latest", id: btn.getAttribute("data-swap-place-latest") });
       });
     });
-    document.querySelectorAll("#swapResultView [data-swap-toggle-latest]").forEach((btn) => {
+    row.querySelectorAll("[data-swap-toggle-latest]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         post({ type: "toggle-latest", id: btn.getAttribute("data-swap-toggle-latest") });
       });
     });
-    document.querySelectorAll("#swapResultView [data-swap-remove-latest]").forEach((btn) => {
+    row.querySelectorAll("[data-swap-remove-latest]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         post({ type: "remove-latest", id: btn.getAttribute("data-swap-remove-latest") });
       });
     });
+  }
+  function wireSwapRowEvents() {
+    document.querySelectorAll("#swapResultView .row").forEach(wireSwapRow);
+  }
+  function appendSwapResultRow(kind, id) {
+    var _a;
+    const listEl = $(kind === "clean" ? "swapCleanList" : "swapDiffList");
+    (_a = listEl.querySelector(".empty-state")) == null ? void 0 : _a.remove();
+    const html = kind === "clean" ? swapCleanRowHtml(id, true) : swapDiffRowHtml(id, true);
+    const excludedAnchor = kind === "clean" ? listEl.querySelector(`[data-id="${SWAP_EXCLUDED_GROUP_ID}"]`) : null;
+    if (excludedAnchor) {
+      excludedAnchor.insertAdjacentHTML("beforebegin", html);
+    } else {
+      listEl.insertAdjacentHTML("beforeend", html);
+    }
+    const newRow = excludedAnchor ? excludedAnchor.previousElementSibling : listEl.lastElementChild;
+    if (newRow) wireSwapRow(newRow);
   }
   function handleSwapCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");

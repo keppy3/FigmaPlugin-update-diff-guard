@@ -216,12 +216,14 @@
   .sort-key-btn svg.sort-icon { width: 10px; height: 10px; color: var(--text-faint); flex: none; }
   .sort-key-btn svg.caret { width: 8px; height: 8px; color: var(--text-faint); flex: none; }
   .sort-key-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .sort-key-btn[disabled] { opacity: 0.45; cursor: default; pointer-events: none; }
   .sort-dir-btn {
     display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px;
     border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--text-muted); cursor: pointer; flex: none; padding: 0;
   }
   .sort-dir-btn svg { width: 11px; height: 11px; }
   .sort-dir-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .sort-dir-btn[disabled] { opacity: 0.45; cursor: default; pointer-events: none; }
 
   .sort-menu {
     position: absolute; top: calc(100% + 4px); left: 0; width: 200px; background: var(--panel-bg);

@@ -503,6 +503,7 @@ function onScanStarted(total: number): void {
   Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
   sortState.key = "default";
   sortState.dir = "asc";
+  setSortControlsEnabled(false);
   scanning = true;
   scanTotal = total;
   scanDone = 0;
@@ -524,7 +525,12 @@ function onScanExcluded(name: string, reason: string): void {
   excluded.push({ name, reason });
   scanDone++;
   updateScanProgress();
-  renderTabs();
+  // onScanStarted時点でscanning=trueのままrenderTabs()済みなので、この
+  // アコーディオン自体は既にDOMにある。中身と件数表示だけを更新すれば足りる。
+  const group = $("cleanList").querySelector(`[data-id="${EXCLUDED_GROUP_ID}"]`);
+  group?.querySelector(".excluded-rows")?.insertAdjacentHTML("beforeend", excludedRowHtml({ name, reason }));
+  const countEl = group?.querySelector(".num");
+  if (countEl) countEl.textContent = `(${excluded.length})`;
 }
 
 async function onScanItemResult(msg: ScanItemMsg): Promise<void> {
@@ -538,11 +544,16 @@ async function onScanItemResult(msg: ScanItemMsg): Promise<void> {
   checked[row.id] = true;
   scanDone++;
   updateScanProgress();
-  renderTabs(row.id);
+  $("cleanCount").textContent = `(${cleanIds.length})`;
+  $("diffCount").textContent = `(${diffIds.length})`;
+  appendResultRow(row.status === "clean" ? "clean" : "diff", row.id);
+  updateFooterButtons();
+  updateListToolbarToggles(row.status === "clean" ? "clean" : "diff");
 }
 
 function onScanFinished(cancelled: boolean): void {
   scanning = false;
+  if (!swapScanning) setSortControlsEnabled(true);
   $("scanProgressStrip").classList.add("hidden");
   if (cancelled) {
     resetToSetup();
@@ -684,26 +695,29 @@ function renderTabs(justEnteredId?: string): void {
   updateSortControl("diff");
 }
 
-function wireRowEvents(): void {
-  document.querySelectorAll<HTMLDetailsElement>("#resultView .row").forEach((details) => {
-    details.addEventListener("toggle", () => {
-      const id = details.getAttribute("data-id");
-      if (id) expandedIds[id] = details.open;
+// 1行分の要素にだけイベントを配線する。renderTabs()の全件再描画（wireRowEvents）
+// と、スキャン中の1行追加（appendResultRow）の両方から呼べるように、対象を
+// 「今追加したその1行」に限定できる形にしてある。
+function wireRow(row: Element): void {
+  if (row instanceof HTMLDetailsElement) {
+    row.addEventListener("toggle", () => {
+      const id = row.getAttribute("data-id");
+      if (id) expandedIds[id] = row.open;
     });
-  });
-  document.querySelectorAll<HTMLInputElement>("#resultView .row-check").forEach((cb) => {
+  }
+  row.querySelectorAll<HTMLInputElement>(".row-check").forEach((cb) => {
     cb.addEventListener("click", (e) => {
       e.stopPropagation();
       handleCheckboxClick(cb, e as MouseEvent);
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-jump]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "jump", id: btn.getAttribute("data-jump") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-individual-update]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-individual-update]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       btn.disabled = true;
@@ -711,14 +725,14 @@ function wireRowEvents(): void {
       post({ type: "apply", id: btn.getAttribute("data-individual-update") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-individual-force]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-individual-force]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-individual-force")!;
       openForceConfirm({ kind: "single", id, btn, mode: "update" });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-place-latest]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-place-latest]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       btn.disabled = true;
@@ -726,18 +740,42 @@ function wireRowEvents(): void {
       post({ type: "place-latest", id: btn.getAttribute("data-place-latest") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-toggle-latest]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-toggle-latest]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "toggle-latest", id: btn.getAttribute("data-toggle-latest") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#resultView [data-remove-latest]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-remove-latest]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "remove-latest", id: btn.getAttribute("data-remove-latest") });
     });
   });
+}
+
+function wireRowEvents(): void {
+  document.querySelectorAll("#resultView .row").forEach(wireRow);
+}
+
+// スキャン中に1件見つかるたびに全件再描画すると、見つかった件数の2乗に比例
+// して重くなる（N件見つかった時点までの累計作業量が1+2+...+N ≒ N²）。他の
+// 行には一切触れず、新しい1行分のHTMLだけをDOMに追加する。デフォルト
+// （レイヤー順）ソート＝到着順のときだけ成立する前提なので、スキャン中は
+// ソート操作自体を無効化して守る（§setSortControlsEnabled）。
+function appendResultRow(kind: "clean" | "diff", id: string): void {
+  const listEl = $(kind === "clean" ? "cleanList" : "diffList");
+  listEl.querySelector(".empty-state")?.remove();
+
+  const html = kind === "clean" ? cleanRowHtml(id, true) : diffRowHtml(id, true);
+  const excludedAnchor = kind === "clean" ? listEl.querySelector(`[data-id="${EXCLUDED_GROUP_ID}"]`) : null;
+  if (excludedAnchor) {
+    excludedAnchor.insertAdjacentHTML("beforebegin", html);
+  } else {
+    listEl.insertAdjacentHTML("beforeend", html);
+  }
+  const newRow = excludedAnchor ? excludedAnchor.previousElementSibling : listEl.lastElementChild;
+  if (newRow) wireRow(newRow);
 }
 
 /* ---- チェックボックス: 通常クリック + Shiftで範囲選択 ---- */
@@ -874,6 +912,19 @@ function updateSortControl(tab: SortTab): void {
   // 開いたままレンダリングが走った場合（バックグラウンドの更新等）に備えて、
   // メニューが開いていれば選択チェックの表示も同期しておく。
   if (openSortMenuTab === tab) openSortMenu(tab);
+}
+
+// ソート状態は5タブ共有の単一値なので、スキャン中（更新・スワップどちらか
+// 一方でも）は変更させない。appendResultRowは「デフォルト（レイヤー順）＝
+// 到着順」を前提に末尾へ直接追加するだけなので、スキャン中にソートが変わると
+// 表示順が崩れる。呼び出し元（onScanStarted/Finished、onSwapScanStarted/
+// Finished）は自分の対象範囲だけでなく、もう一方のスキャンも動いていないか
+// 見てから判断する。
+function setSortControlsEnabled(enabled: boolean): void {
+  (["clean", "diff", "swapClean", "swapDiff", "swapVariant"] as SortTab[]).forEach((tab) => {
+    ($(`${tab}SortKeyBtn`) as HTMLButtonElement).disabled = !enabled;
+    ($(`${tab}SortDirBtn`) as HTMLButtonElement).disabled = !enabled;
+  });
 }
 
 function updateFooterButtons(): void {
@@ -1469,6 +1520,7 @@ function onSwapScanStarted(total: number): void {
   Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
   sortState.key = "default";
   sortState.dir = "asc";
+  setSortControlsEnabled(false);
   swapScanning = true;
   swapScanTotal = total;
   swapScanDone = 0;
@@ -1511,7 +1563,12 @@ function onSwapScanAlreadyLatest(name: string): void {
   swapExcluded.push({ name, reason: "既に最新版を参照" });
   swapScanDone++;
   updateSwapScanProgress();
-  renderSwapTabs();
+  // §onScanExcludedと同じ理由（onSwapScanStarted時点でこのアコーディオンは
+  // 既にDOMにある）。
+  const group = $("swapCleanList").querySelector(`[data-id="${SWAP_EXCLUDED_GROUP_ID}"]`);
+  group?.querySelector(".excluded-rows")?.insertAdjacentHTML("beforeend", swapExcludedRowHtml({ name, reason: "既に最新版を参照" }));
+  const countEl = group?.querySelector(".num");
+  if (countEl) countEl.textContent = `(${swapExcluded.length})`;
 }
 
 async function onSwapScanItemResult(msg: ScanItemMsg): Promise<void> {
@@ -1525,7 +1582,11 @@ async function onSwapScanItemResult(msg: ScanItemMsg): Promise<void> {
   swapChecked[row.id] = true;
   swapScanDone++;
   updateSwapScanProgress();
-  renderSwapTabs(row.id);
+  $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
+  $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
+  appendSwapResultRow(row.status === "clean" ? "clean" : "diff", row.id);
+  updateSwapFooterButtons();
+  updateSwapListToolbarToggles(row.status === "clean" ? "clean" : "diff");
 }
 
 // バリアント不一致タブ: デフォルトバリアントへの自動フォールバックは常に明示
@@ -1557,6 +1618,7 @@ async function onSwapScanItemVariantResult(msg: ScanItemMsg): Promise<void> {
 
 function onSwapScanFinished(cancelled: boolean): void {
   swapScanning = false;
+  if (!scanning) setSortControlsEnabled(true);
   $("swapScanProgressStrip").classList.add("hidden");
   if (cancelled) {
     resetSwapToPaste();
@@ -1788,26 +1850,28 @@ function renderSwapTabs(justEnteredId?: string): void {
   updateSortControl("swapVariant");
 }
 
-function wireSwapRowEvents(): void {
-  document.querySelectorAll<HTMLDetailsElement>("#swapResultView .row").forEach((details) => {
-    details.addEventListener("toggle", () => {
-      const id = details.getAttribute("data-id");
-      if (id) swapExpandedIds[id] = details.open;
+// §wireRowと同じ理由（全件再描画とスキャン中の1行追加の両方から呼べるように、
+// 対象を1行分に限定できる形にしてある）。
+function wireSwapRow(row: Element): void {
+  if (row instanceof HTMLDetailsElement) {
+    row.addEventListener("toggle", () => {
+      const id = row.getAttribute("data-id");
+      if (id) swapExpandedIds[id] = row.open;
     });
-  });
-  document.querySelectorAll<HTMLInputElement>("#swapResultView .row-check").forEach((cb) => {
+  }
+  row.querySelectorAll<HTMLInputElement>(".row-check").forEach((cb) => {
     cb.addEventListener("click", (e) => {
       e.stopPropagation();
       handleSwapCheckboxClick(cb, e as MouseEvent);
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-jump]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "jump", id: btn.getAttribute("data-jump") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-individual-update]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-swap-individual-update]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       btn.disabled = true;
@@ -1815,14 +1879,14 @@ function wireSwapRowEvents(): void {
       post({ type: "apply", id: btn.getAttribute("data-swap-individual-update") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-individual-force]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-swap-individual-force]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const id = btn.getAttribute("data-swap-individual-force")!;
       openForceConfirm({ kind: "single", id, btn, mode: "swap" });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-place-latest]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-swap-place-latest]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       btn.disabled = true;
@@ -1830,18 +1894,39 @@ function wireSwapRowEvents(): void {
       post({ type: "place-latest", id: btn.getAttribute("data-swap-place-latest") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-toggle-latest]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-swap-toggle-latest]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "toggle-latest", id: btn.getAttribute("data-swap-toggle-latest") });
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("#swapResultView [data-swap-remove-latest]").forEach((btn) => {
+  row.querySelectorAll<HTMLButtonElement>("[data-swap-remove-latest]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       post({ type: "remove-latest", id: btn.getAttribute("data-swap-remove-latest") });
     });
   });
+}
+
+function wireSwapRowEvents(): void {
+  document.querySelectorAll("#swapResultView .row").forEach(wireSwapRow);
+}
+
+// §appendResultRowと同じ理由・同じ前提（デフォルトソート＝到着順のときだけ
+// 成立、スキャン中はsetSortControlsEnabledでソート操作自体を無効化して守る）。
+function appendSwapResultRow(kind: "clean" | "diff", id: string): void {
+  const listEl = $(kind === "clean" ? "swapCleanList" : "swapDiffList");
+  listEl.querySelector(".empty-state")?.remove();
+
+  const html = kind === "clean" ? swapCleanRowHtml(id, true) : swapDiffRowHtml(id, true);
+  const excludedAnchor = kind === "clean" ? listEl.querySelector(`[data-id="${SWAP_EXCLUDED_GROUP_ID}"]`) : null;
+  if (excludedAnchor) {
+    excludedAnchor.insertAdjacentHTML("beforebegin", html);
+  } else {
+    listEl.insertAdjacentHTML("beforeend", html);
+  }
+  const newRow = excludedAnchor ? excludedAnchor.previousElementSibling : listEl.lastElementChild;
+  if (newRow) wireSwapRow(newRow);
 }
 
 /* ---- ライブラリスワップ: チェックボックス（Shift範囲選択） ---- */
