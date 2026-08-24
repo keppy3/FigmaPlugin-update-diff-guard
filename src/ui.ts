@@ -115,7 +115,6 @@ const latestVisible: Record<string, boolean> = {};
 let scanning = false;
 let scanTotal = 0;
 let scanDone = 0;
-let markerCount = 0;
 // Per-row accordion open/closed state, persisted across re-renders so
 // toggling a preview, placing a latest instance, etc. don't collapse rows
 // the user manually expanded. "すべて展開"/"すべて折りたたむ" are one-shot
@@ -209,7 +208,6 @@ function resetToSetup(): void {
   Object.keys(checked).forEach((k) => delete checked[k]);
   Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
   Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
-  markerCount = 0;
   lastClickedIndex = null;
   show("setup");
 }
@@ -938,12 +936,10 @@ function updateFooterButtons(): void {
   $("placeLatestBtnLabel").textContent = `比較用インスタンスを一括配置(${placeableChecked})`;
   ($("placeLatestBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
-  // Unlike the other footer buttons, this isn't scoped to checked rows —
-  // it's a full sweep of every tagged node on every page (same as the
-  // former standalone "すべて削除", which this button absorbed), so its
-  // count and enabled state come from markerCount, not the row list.
-  $("clearAllLatestBtnLabel").textContent = `比較用インスタンスをすべて削除(${markerCount})`;
-  ($("clearAllLatestBtn") as HTMLButtonElement).disabled = markerCount === 0;
+  // 件数はここでは出さない。前セッションから残る孤児マーカーも含めた正確な
+  // 件数は、クリック時のcount-markers往復でしか分からないため
+  // （§openClearMarkersConfirm）。
+  $("clearAllLatestBtnLabel").textContent = "比較用インスタンスをすべて削除";
 
   const forceChecked = diffIds.filter((id) => checked[id]).length;
   $("forceUpdateBtnLabel").textContent = `このまま一括更新(${forceChecked})`;
@@ -1164,17 +1160,6 @@ $("clearMarkersConfirmOk").addEventListener("click", () => {
   $("clearMarkersConfirmOverlay").classList.add("hidden");
   post({ type: "clear-markers" });
 });
-
-/* ---- マーカー（配置済みLatestプレビュー）件数 ---- */
-// Drives only the "比較用インスタンスをすべて削除" button's label/disabled state now
-// — the standalone marker-strip display + its own "すべて削除" button
-// were removed since they duplicated that button's role。更新／スワップ両モードの
-// フッターボタンが同じmarkerCountを参照するので、両方更新する。
-function setMarkerCount(count: number): void {
-  markerCount = count;
-  updateFooterButtons();
-  updateSwapFooterButtons();
-}
 
 /* ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） ---- */
 const scanLibViews = {
@@ -2000,10 +1985,8 @@ function updateSwapFooterButtons(): void {
   $("swapPlaceBulkBtnLabel").textContent = `比較用インスタンスを一括配置(${placeableChecked})`;
   ($("swapPlaceBulkBtn") as HTMLButtonElement).disabled = placeableChecked === 0;
 
-  // 更新フロー側と同じ全件スイープのmarkerCountを共有して使う（比較用インスタンスの
-  // 削除は出所を問わない全件掃除のため。§code.ts参照）。
-  $("swapClearAllBtnLabel").textContent = `比較用インスタンスをすべて削除(${markerCount})`;
-  ($("swapClearAllBtn") as HTMLButtonElement).disabled = markerCount === 0;
+  // §updateFooterButtonsと同じ理由で件数は出さない。
+  $("swapClearAllBtnLabel").textContent = "比較用インスタンスをすべて削除";
 
   const forceChecked = swapDiffIds.filter((id) => swapChecked[id]).length;
   $("swapForceBulkBtnLabel").textContent = `このまま一括スワップ(${forceChecked})`;
@@ -2026,8 +2009,8 @@ function updateSwapFooterButtons(): void {
   $("swapVariantPlaceBulkBtnLabel").textContent = `比較用インスタンスを一括配置(${variantPlaceableChecked})`;
   ($("swapVariantPlaceBulkBtn") as HTMLButtonElement).disabled = variantPlaceableChecked === 0;
 
-  $("swapVariantClearAllBtnLabel").textContent = `比較用インスタンスをすべて削除(${markerCount})`;
-  ($("swapVariantClearAllBtn") as HTMLButtonElement).disabled = markerCount === 0;
+  // §updateFooterButtonsと同じ理由で件数は出さない。
+  $("swapVariantClearAllBtnLabel").textContent = "比較用インスタンスをすべて削除";
 
   ($("swapVariantSelectCanvas") as HTMLButtonElement).textContent = `すべてのインスタンスを選択(${variantChecked})`;
   ($("swapVariantSelectCanvas") as HTMLButtonElement).disabled = variantChecked === 0;
@@ -2212,9 +2195,6 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "markers-cleared":
       onMarkersCleared(msg.ids, msg.count);
-      break;
-    case "marker-count":
-      setMarkerCount(msg.count);
       break;
     case "marker-clear-count":
       openClearMarkersConfirm(msg.count);

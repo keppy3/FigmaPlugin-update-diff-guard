@@ -128,7 +128,6 @@
       await maybeYieldScan(yieldCounter);
     }
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function computeAndSendDiff(inst, latest, resultType, mainComponentName) {
     var _a;
@@ -192,7 +191,6 @@
     if (removeLatest !== false) cleanupWrapper(id);
     figma.commitUndo();
     post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function handleApplyBulk(ids, removeLatest) {
     const succeeded = [];
@@ -219,7 +217,6 @@
     }
     figma.commitUndo();
     post({ type: bulkSource === "swap" ? "swap-apply-bulk-done" : "apply-bulk-done", ids: succeeded });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function placeLatestOne(id) {
     if (wrapperStore.has(id)) return true;
@@ -265,7 +262,6 @@
     }
     figma.commitUndo();
     post({ type: (item == null ? void 0 : item.source) === "swap" ? "swap-latest-placed" : "latest-placed", id });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function handlePlaceLatestBulk(ids) {
     var _a;
@@ -291,7 +287,6 @@
     }
     figma.commitUndo();
     post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function handleRemoveLatest(id) {
     var _a;
@@ -300,7 +295,6 @@
     cleanupWrapper(id);
     figma.commitUndo();
     post({ type: source === "swap" ? "swap-latest-removed" : "latest-removed", id });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   function handleToggleLatest(id) {
     var _a;
@@ -326,7 +320,6 @@
     wrapperStore.clear();
     figma.commitUndo();
     post({ type: "markers-cleared", count, ids: clearedIds });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   function nodePath(node) {
     const parts = [];
@@ -545,7 +538,6 @@
       await maybeYieldScan(yieldCounter);
     }
     post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
-    post({ type: "marker-count", count: wrapperStore.size });
   }
   function findOwningPage(node) {
     let p = node;

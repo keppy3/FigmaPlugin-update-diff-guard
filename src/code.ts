@@ -230,7 +230,6 @@ async function runScan(scope: ScopeMode): Promise<void> {
   }
 
   post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 async function computeAndSendDiff(
@@ -357,7 +356,6 @@ async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): 
   if (removeLatest !== false) cleanupWrapper(id);
   figma.commitUndo();
   post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<void> {
@@ -393,7 +391,6 @@ async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<v
   }
   figma.commitUndo();
   post({ type: bulkSource === "swap" ? "swap-apply-bulk-done" : "apply-bulk-done", ids: succeeded });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // ---- 比較用インスタンスを配置（見た目差分あり） ------------------------------
@@ -470,7 +467,6 @@ async function handlePlaceLatest(id: string): Promise<void> {
   }
   figma.commitUndo();
   post({ type: item?.source === "swap" ? "swap-latest-placed" : "latest-placed", id });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
@@ -499,7 +495,6 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
   }
   figma.commitUndo();
   post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // Individual "比較用インスタンスを削除" — removes just the named row's wrapper, as
@@ -516,7 +511,6 @@ async function handleRemoveLatest(id: string): Promise<void> {
   cleanupWrapper(id);
   figma.commitUndo();
   post({ type: source === "swap" ? "swap-latest-removed" : "latest-removed", id });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 function handleToggleLatest(id: string): void {
@@ -551,7 +545,6 @@ async function handleClearMarkers(): Promise<void> {
   wrapperStore.clear();
   figma.commitUndo();
   post({ type: "markers-cleared", count, ids: clearedIds });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） -------------
@@ -935,7 +928,6 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
   }
 
   post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
-  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // ---- キャンバスでジャンプ -----------------------------------------------

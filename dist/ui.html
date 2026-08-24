@@ -533,7 +533,7 @@
               <button class="btn-big" id="forceUpdateBtn"><span id="forceUpdateBtnLabel">このまま一括更新(0)</span></button>
               <div class="btn-pair">
                 <button class="btn-big outline-warning" id="placeLatestBtn"><span id="placeLatestBtnLabel">比較用インスタンスを一括配置(0)</span></button>
-                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
+                <button class="btn-big outline-danger" id="clearAllLatestBtn"><span id="clearAllLatestBtnLabel">比較用インスタンスをすべて削除</span></button>
               </div>
             </div>
           </div>
@@ -653,7 +653,7 @@
               <button class="btn-big" id="swapForceBulkBtn"><span id="swapForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
               <div class="btn-pair">
                 <button class="btn-big outline-warning" id="swapPlaceBulkBtn"><span id="swapPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
-                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
+                <button class="btn-big outline-danger" id="swapClearAllBtn"><span id="swapClearAllBtnLabel">比較用インスタンスをすべて削除</span></button>
               </div>
             </div>
           </div>
@@ -678,7 +678,7 @@
               <button class="btn-big" id="swapVariantForceBulkBtn"><span id="swapVariantForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
               <div class="btn-pair">
                 <button class="btn-big outline-warning" id="swapVariantPlaceBulkBtn"><span id="swapVariantPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
-                <button class="btn-big outline-danger" id="swapVariantClearAllBtn"><span id="swapVariantClearAllBtnLabel">比較用インスタンスをすべて削除(0)</span></button>
+                <button class="btn-big outline-danger" id="swapVariantClearAllBtn"><span id="swapVariantClearAllBtnLabel">比較用インスタンスをすべて削除</span></button>
               </div>
             </div>
           </div>
@@ -1031,7 +1031,6 @@
   var scanning = false;
   var scanTotal = 0;
   var scanDone = 0;
-  var markerCount = 0;
   var expandedIds = {};
   var lastClickedIndex = null;
   var swapRows = /* @__PURE__ */ new Map();
@@ -1082,7 +1081,6 @@
     Object.keys(checked).forEach((k) => delete checked[k]);
     Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
     Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
-    markerCount = 0;
     lastClickedIndex = null;
     show("setup");
   }
@@ -1650,8 +1648,7 @@
     ).length;
     $("placeLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${placeableChecked})`;
     $("placeLatestBtn").disabled = placeableChecked === 0;
-    $("clearAllLatestBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664(${markerCount})`;
-    $("clearAllLatestBtn").disabled = markerCount === 0;
+    $("clearAllLatestBtnLabel").textContent = "\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664";
     const forceChecked = diffIds.filter((id) => checked[id]).length;
     $("forceUpdateBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u66F4\u65B0(${forceChecked})`;
     $("forceUpdateBtn").disabled = forceChecked === 0;
@@ -1813,11 +1810,6 @@
     $("clearMarkersConfirmOverlay").classList.add("hidden");
     post({ type: "clear-markers" });
   });
-  function setMarkerCount(count) {
-    markerCount = count;
-    updateFooterButtons();
-    updateSwapFooterButtons();
-  }
   var scanLibViews = {
     intro: $("scanLibIntroView"),
     busy: $("scanLibBusyView"),
@@ -2471,8 +2463,7 @@
     ).length;
     $("swapPlaceBulkBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${placeableChecked})`;
     $("swapPlaceBulkBtn").disabled = placeableChecked === 0;
-    $("swapClearAllBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664(${markerCount})`;
-    $("swapClearAllBtn").disabled = markerCount === 0;
+    $("swapClearAllBtnLabel").textContent = "\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664";
     const forceChecked = swapDiffIds.filter((id) => swapChecked[id]).length;
     $("swapForceBulkBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${forceChecked})`;
     $("swapForceBulkBtn").disabled = forceChecked === 0;
@@ -2488,8 +2479,7 @@
     ).length;
     $("swapVariantPlaceBulkBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${variantPlaceableChecked})`;
     $("swapVariantPlaceBulkBtn").disabled = variantPlaceableChecked === 0;
-    $("swapVariantClearAllBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664(${markerCount})`;
-    $("swapVariantClearAllBtn").disabled = markerCount === 0;
+    $("swapVariantClearAllBtnLabel").textContent = "\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664";
     $("swapVariantSelectCanvas").textContent = `\u3059\u3079\u3066\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u9078\u629E(${variantChecked})`;
     $("swapVariantSelectCanvas").disabled = variantChecked === 0;
   }
@@ -2654,9 +2644,6 @@
         break;
       case "markers-cleared":
         onMarkersCleared(msg.ids, msg.count);
-        break;
-      case "marker-count":
-        setMarkerCount(msg.count);
         break;
       case "marker-clear-count":
         openClearMarkersConfirm(msg.count);
