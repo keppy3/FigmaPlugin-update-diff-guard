@@ -591,7 +591,7 @@ function cleanRowHtml(id: string, justEntered: boolean): string {
         <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest（完全一致）</span></div>
         <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
-      <div class="row-buttons"><button class="ghost-btn accent" data-individual-update="${id}">更新する</button></div>
+      <div class="row-buttons"><button class="ghost-btn fill" data-individual-update="${id}">更新する</button></div>
     </div>
   </details>`;
 }
@@ -600,7 +600,7 @@ function diffRowButtons(id: string): string {
   // Place-latest and the eye toggle/delete pair are mutually exclusive:
   // before placement only the place button shows, after placement it's
   // replaced by the toggle+delete pair (not shown alongside it, greyed out).
-  const forceBtn = `<button class="ghost-btn accent" data-individual-force="${id}">このまま更新</button>`;
+  const forceBtn = `<button class="ghost-btn fill" data-individual-force="${id}">このまま更新</button>`;
   const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
   if (!placed) {
     return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">比較用インスタンスを配置</button></div>`;
@@ -1584,13 +1584,13 @@ function swapCleanRowHtml(id: string, justEntered: boolean): string {
         <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = スワップ後（完全一致）</span></div>
         <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
-      <div class="row-buttons"><button class="ghost-btn accent" data-swap-individual-update="${id}">スワップする</button></div>
+      <div class="row-buttons"><button class="ghost-btn fill" data-swap-individual-update="${id}">スワップする</button></div>
     </div>
   </details>`;
 }
 
 function swapDiffRowButtons(id: string): string {
-  const forceBtn = `<button class="ghost-btn accent" data-swap-individual-force="${id}">このままスワップ</button>`;
+  const forceBtn = `<button class="ghost-btn fill" data-swap-individual-force="${id}">このままスワップ</button>`;
   const placed = Object.prototype.hasOwnProperty.call(swapLatestVisible, id);
   if (!placed) {
     return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-swap-place-latest="${id}">比較用インスタンスを配置</button></div>`;

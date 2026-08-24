@@ -1,4 +1,4 @@
-# Update Diff Guard
+# Swap & Update Diff Check
 
 Figmaでコンポーネントを更新（またはライブラリの最新版に更新）した際に、意図しない見た目の変化（オーバーライドのリセットなど）が起きていないかを、Before/After比較で確認できるFigmaプラグインです。詳細な仕様は[Spec.md](Spec.md)を参照してください。
 
@@ -11,7 +11,7 @@ Figmaでコンポーネントを更新（またはライブラリの最新版に
 1. Figmaデスクトップアプリを開く。
 2. メニュー → Plugins → Development → **Import plugin from manifest…**
 3. このフォルダ内の `manifest.json` を選択。
-4. メニュー → Plugins → Development → **Update Diff Guard (dev)** を選んで実行。
+4. メニュー → Plugins → Development → **Swap & Update Diff Check (dev)** を選んで実行。
 
 ## ソースを編集する場合（Node.js/npmが使える環境のみ）
 

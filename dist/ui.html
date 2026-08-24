@@ -123,7 +123,7 @@
   .setup-footnote { font-size: 10.5px; color: var(--text-faint); text-align: center; }
 
   .btn-big {
-    width: 100%; height: 40px; border-radius: 8px; border: none; cursor: pointer;
+    width: 100%; height: 40px; flex: none; border-radius: 8px; border: none; cursor: pointer;
     background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
@@ -292,6 +292,11 @@
   .ghost-btn.accent { color: var(--accent-strong); border-color: var(--accent); }
   .ghost-btn.warn { color: var(--warning-strong); border-color: var(--warning-strong); }
   .ghost-btn.danger { color: var(--danger); border-color: var(--danger); }
+  /* 「更新する」「このまま更新」「このままスワップ」等の主操作は塗りつぶしにして、
+     「比較用インスタンスを配置」等のオプショナルな操作（枠線のみ）と見分けが
+     つくようにする。一括操作ボタン（.btn-big）と同じ塗り色を使う。 */
+  .ghost-btn.fill { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .ghost-btn.fill:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
   .row-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 
   /* ---- 対象外（見た目差分なしタブのリスト内、他の行と同じアコーディオンで折りたたみ。
@@ -1360,12 +1365,12 @@
         <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = Latest\uFF08\u5B8C\u5168\u4E00\u81F4\uFF09</span></div>
         <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
-      <div class="row-buttons"><button class="ghost-btn accent" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>
+      <div class="row-buttons"><button class="ghost-btn fill" data-individual-update="${id}">\u66F4\u65B0\u3059\u308B</button></div>
     </div>
   </details>`;
   }
   function diffRowButtons(id) {
-    const forceBtn = `<button class="ghost-btn accent" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>`;
+    const forceBtn = `<button class="ghost-btn fill" data-individual-force="${id}">\u3053\u306E\u307E\u307E\u66F4\u65B0</button>`;
     const placed = Object.prototype.hasOwnProperty.call(latestVisible, id);
     if (!placed) {
       return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-place-latest="${id}">\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E</button></div>`;
@@ -2129,12 +2134,12 @@
         <div class="thumb-col"><div class="preview-frame"><img src="${row.imageUrl || ""}" alt=""></div><span class="thumb-label">Current = \u30B9\u30EF\u30C3\u30D7\u5F8C\uFF08\u5B8C\u5168\u4E00\u81F4\uFF09</span></div>
         <div class="side-col">${jumpBtnHtml(id)}</div>
       </div>
-      <div class="row-buttons"><button class="ghost-btn accent" data-swap-individual-update="${id}">\u30B9\u30EF\u30C3\u30D7\u3059\u308B</button></div>
+      <div class="row-buttons"><button class="ghost-btn fill" data-swap-individual-update="${id}">\u30B9\u30EF\u30C3\u30D7\u3059\u308B</button></div>
     </div>
   </details>`;
   }
   function swapDiffRowButtons(id) {
-    const forceBtn = `<button class="ghost-btn accent" data-swap-individual-force="${id}">\u3053\u306E\u307E\u307E\u30B9\u30EF\u30C3\u30D7</button>`;
+    const forceBtn = `<button class="ghost-btn fill" data-swap-individual-force="${id}">\u3053\u306E\u307E\u307E\u30B9\u30EF\u30C3\u30D7</button>`;
     const placed = Object.prototype.hasOwnProperty.call(swapLatestVisible, id);
     if (!placed) {
       return `<div class="row-buttons">${forceBtn}<button class="ghost-btn warn" data-swap-place-latest="${id}">\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E</button></div>`;
