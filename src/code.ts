@@ -1,4 +1,4 @@
-// Update Diff Guard — main thread (sandboxed, Figma Document API).
+// Swap & Update Diff Check — main thread (sandboxed, Figma Document API).
 //
 // Implements Spec.md's full design: streaming scan (one message per
 // resolved instance, cancellable, one commitUndo per item so a concurrent
@@ -7,8 +7,8 @@
 // 見た目差分あり items — the write is identical either way), and a
 // per-instance "比較用インスタンスを配置" overlay comparison tool (place a
 // Latest-preview directly on top of Current, toggle it show/hide, or
-// remove it individually) with a pluginData-tagged full-sweep cleanup
-// utility ("比較用インスタンスをすべて削除").
+// remove it individually) with a name-based full-sweep cleanup utility
+// ("比較用インスタンスをすべて削除").
 //
 // Classification (clean vs diff) happens in ui.ts, not here — this side
 // only ever needs to know "which instance" via id, never "is it clean".
@@ -99,31 +99,35 @@ async function collectTargets(scope: ScopeMode): Promise<InstanceNode[]> {
   return found;
 }
 
-// ---- Latest-preview wrapper discovery (setPluginData-tagged) -------------
+// ---- Latest-preview wrapper discovery (見た目の名前で検索) -----------------
+//
+// 以前はsetPluginDataで内部タグを付けたノードを探索していたが、「配置した
+// 複製インスタンスだけをキャンバス上でラッパーの外に出して実インスタンスとして
+// 使う」というユーザーの実運用を考えると、削除対象が目に見えない内部タグに
+// 依存しているのは挙動を予測しづらい（ユーザー自身がレイヤーパネルを見ても、
+// 何が「すべて削除」の対象になるか分からない）。ラッパーの名前
+// （§placeLatestOne）そのもので検索することで、レイヤーパネルの表示＝削除
+// 対象という分かりやすい対応にする。中の複製インスタンス自体には何もタグ付け
+// していないので、ユーザーがラッパーから複製を取り出して実インスタンスとして
+// 使い始めた場合、そのインスタンスはこの検索に一切引っかからず「削除の呪い」
+// から自然に解放される。
+const LATEST_PREVIEW_NAME_PREFIX = "⚠ Latest Preview — ";
 
-const ROLE_KEY = "update-diff-guard-role";
-const ROLE_VALUE = "latest-preview";
-
-function isTaggedNode(node: BaseNode): node is SceneNode {
-  if (!("getPluginData" in node)) return false;
-  return (node as SceneNode).getPluginData(ROLE_KEY) === ROLE_VALUE;
-}
-
-function collectTaggedNodes(node: BaseNode, out: SceneNode[]): void {
-  if (isTaggedNode(node)) {
-    out.push(node as SceneNode);
-    return; // our own wrapper's contents never contain further tagged nodes
+function collectMarkerFrames(node: BaseNode, out: FrameNode[]): void {
+  if (node.type === "FRAME" && node.name.startsWith(LATEST_PREVIEW_NAME_PREFIX)) {
+    out.push(node);
+    return; // 自分たちが作ったラッパーの中身なので、これ以上潜らない
   }
   if ("children" in node) {
-    for (const child of (node as unknown as ChildrenMixin).children) collectTaggedNodes(child, out);
+    for (const child of (node as unknown as ChildrenMixin).children) collectMarkerFrames(child, out);
   }
 }
 
-async function findAllTaggedNodes(): Promise<SceneNode[]> {
-  const found: SceneNode[] = [];
+async function findAllMarkerFrames(): Promise<FrameNode[]> {
+  const found: FrameNode[] = [];
   for (const page of figma.root.children) {
     await page.loadAsync();
-    collectTaggedNodes(page, found);
+    collectMarkerFrames(page, found);
   }
   return found;
 }
@@ -226,7 +230,7 @@ async function runScan(scope: ScopeMode): Promise<void> {
   }
 
   post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 async function computeAndSendDiff(
@@ -353,7 +357,7 @@ async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): 
   if (removeLatest !== false) cleanupWrapper(id);
   figma.commitUndo();
   post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<void> {
@@ -389,7 +393,7 @@ async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<v
   }
   figma.commitUndo();
   post({ type: bulkSource === "swap" ? "swap-apply-bulk-done" : "apply-bulk-done", ids: succeeded });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // ---- 比較用インスタンスを配置（見た目差分あり） ------------------------------
@@ -426,7 +430,6 @@ async function placeLatestOne(id: string): Promise<boolean> {
   wrapper.strokeWeight = 20;
   wrapper.strokeAlign = "OUTSIDE";
   wrapper.locked = true;
-  wrapper.setPluginData(ROLE_KEY, ROLE_VALUE);
 
   const originalIndex = parent.children.indexOf(inst);
   parent.insertChild(originalIndex + 1, wrapper);
@@ -467,7 +470,7 @@ async function handlePlaceLatest(id: string): Promise<void> {
   }
   figma.commitUndo();
   post({ type: item?.source === "swap" ? "swap-latest-placed" : "latest-placed", id });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
@@ -496,7 +499,7 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
   }
   figma.commitUndo();
   post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // Individual "比較用インスタンスを削除" — removes just the named row's wrapper, as
@@ -513,7 +516,7 @@ async function handleRemoveLatest(id: string): Promise<void> {
   cleanupWrapper(id);
   figma.commitUndo();
   post({ type: source === "swap" ? "swap-latest-removed" : "latest-removed", id });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 function handleToggleLatest(id: string): void {
@@ -528,8 +531,15 @@ function handleToggleLatest(id: string): void {
   post({ type: source === "swap" ? "swap-latest-toggled" : "latest-toggled", id, visible: wrapper.visible });
 }
 
+// 「すべて削除」ボタン押下時、実際に削除する前に件数を確認モーダルで見せる
+// ための問い合わせ専用ハンドラ（削除はしない）。
+async function handleCountMarkers(): Promise<void> {
+  const nodes = await findAllMarkerFrames();
+  post({ type: "marker-clear-count", count: nodes.length });
+}
+
 async function handleClearMarkers(): Promise<void> {
-  const nodes = await findAllTaggedNodes();
+  const nodes = await findAllMarkerFrames();
   const count = nodes.length;
   for (const n of nodes) n.remove();
   // Rows whose wrapper we just deleted need to revert to the "not placed"
@@ -541,7 +551,7 @@ async function handleClearMarkers(): Promise<void> {
   wrapperStore.clear();
   figma.commitUndo();
   post({ type: "markers-cleared", count, ids: clearedIds });
-  post({ type: "marker-count", count: 0 });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） -------------
@@ -925,7 +935,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
   }
 
   post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
-  post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+  post({ type: "marker-count", count: wrapperStore.size });
 }
 
 // ---- キャンバスでジャンプ -----------------------------------------------
@@ -1031,6 +1041,9 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         break;
       case "select-on-canvas":
         if (msg.ids) await handleSelectOnCanvas(msg.ids);
+        break;
+      case "count-markers":
+        await handleCountMarkers();
         break;
       case "clear-markers":
         await handleClearMarkers();

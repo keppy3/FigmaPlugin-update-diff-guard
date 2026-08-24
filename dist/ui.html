@@ -742,6 +742,17 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="clearMarkersConfirmOverlay">
+    <div class="modal-box">
+      <div class="modal-title">比較用インスタンスを一括削除しますか？</div>
+      <div class="modal-body" id="clearMarkersConfirmBody"></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="clearMarkersConfirmCancel">キャンセル</button>
+        <button class="btn-big outline-danger" id="clearMarkersConfirmOk">削除</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
     <div class="modal-box">
       <div class="modal-title">スワップ先ライブラリの公開コンポーネントリストとは</div>
@@ -1640,7 +1651,7 @@
     post({ type: "place-latest-bulk", ids: targets });
   });
   $("clearAllLatestBtn").addEventListener("click", () => {
-    post({ type: "clear-markers" });
+    post({ type: "count-markers" });
   });
   $("forceUpdateBtn").addEventListener("click", () => {
     const targets = diffIds.filter((id) => checked[id]);
@@ -1751,6 +1762,21 @@
       post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
     }
     pendingForce = null;
+  });
+  function openClearMarkersConfirm(count) {
+    if (count === 0) {
+      showToast("\u524A\u9664\u3067\u304D\u308B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306F\u3042\u308A\u307E\u305B\u3093");
+      return;
+    }
+    $("clearMarkersConfirmBody").textContent = `${count}\u4EF6\u306E\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664\u3057\u307E\u3059\u3002\u3088\u308D\u3057\u3044\u3067\u3059\u304B\uFF1F`;
+    $("clearMarkersConfirmOverlay").classList.remove("hidden");
+  }
+  $("clearMarkersConfirmCancel").addEventListener("click", () => {
+    $("clearMarkersConfirmOverlay").classList.add("hidden");
+  });
+  $("clearMarkersConfirmOk").addEventListener("click", () => {
+    $("clearMarkersConfirmOverlay").classList.add("hidden");
+    post({ type: "clear-markers" });
   });
   function setMarkerCount(count) {
     markerCount = count;
@@ -2433,7 +2459,7 @@
     post({ type: "place-latest-bulk", ids: targets });
   });
   $("swapClearAllBtn").addEventListener("click", () => {
-    post({ type: "clear-markers" });
+    post({ type: "count-markers" });
   });
   $("swapForceBulkBtn").addEventListener("click", () => {
     const targets = swapDiffIds.filter((id) => swapChecked[id]);
@@ -2464,7 +2490,7 @@
     post({ type: "place-latest-bulk", ids: targets });
   });
   $("swapVariantClearAllBtn").addEventListener("click", () => {
-    post({ type: "clear-markers" });
+    post({ type: "count-markers" });
   });
   $("swapVariantSelectCanvas").addEventListener("click", () => {
     const targets = swapVariantIds.filter((id) => swapChecked[id]);
@@ -2569,6 +2595,9 @@
         break;
       case "marker-count":
         setMarkerCount(msg.count);
+        break;
+      case "marker-clear-count":
+        openClearMarkersConfirm(msg.count);
         break;
       case "library-scan-progress":
         onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);

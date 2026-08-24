@@ -45,26 +45,21 @@
     for (const root of roots) walkForInstances(root, found);
     return found;
   }
-  var ROLE_KEY = "update-diff-guard-role";
-  var ROLE_VALUE = "latest-preview";
-  function isTaggedNode(node) {
-    if (!("getPluginData" in node)) return false;
-    return node.getPluginData(ROLE_KEY) === ROLE_VALUE;
-  }
-  function collectTaggedNodes(node, out) {
-    if (isTaggedNode(node)) {
+  var LATEST_PREVIEW_NAME_PREFIX = "\u26A0 Latest Preview \u2014 ";
+  function collectMarkerFrames(node, out) {
+    if (node.type === "FRAME" && node.name.startsWith(LATEST_PREVIEW_NAME_PREFIX)) {
       out.push(node);
       return;
     }
     if ("children" in node) {
-      for (const child of node.children) collectTaggedNodes(child, out);
+      for (const child of node.children) collectMarkerFrames(child, out);
     }
   }
-  async function findAllTaggedNodes() {
+  async function findAllMarkerFrames() {
     const found = [];
     for (const page of figma.root.children) {
       await page.loadAsync();
-      collectTaggedNodes(page, found);
+      collectMarkerFrames(page, found);
     }
     return found;
   }
@@ -133,7 +128,7 @@
       await maybeYieldScan(yieldCounter);
     }
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function computeAndSendDiff(inst, latest, resultType, mainComponentName) {
     var _a;
@@ -197,7 +192,7 @@
     if (removeLatest !== false) cleanupWrapper(id);
     figma.commitUndo();
     post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function handleApplyBulk(ids, removeLatest) {
     const succeeded = [];
@@ -224,7 +219,7 @@
     }
     figma.commitUndo();
     post({ type: bulkSource === "swap" ? "swap-apply-bulk-done" : "apply-bulk-done", ids: succeeded });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function placeLatestOne(id) {
     if (wrapperStore.has(id)) return true;
@@ -244,7 +239,6 @@
     wrapper.strokeWeight = 20;
     wrapper.strokeAlign = "OUTSIDE";
     wrapper.locked = true;
-    wrapper.setPluginData(ROLE_KEY, ROLE_VALUE);
     const originalIndex = parent.children.indexOf(inst);
     parent.insertChild(originalIndex + 1, wrapper);
     const layoutParent = parent;
@@ -271,7 +265,7 @@
     }
     figma.commitUndo();
     post({ type: (item == null ? void 0 : item.source) === "swap" ? "swap-latest-placed" : "latest-placed", id });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function handlePlaceLatestBulk(ids) {
     var _a;
@@ -297,7 +291,7 @@
     }
     figma.commitUndo();
     post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   async function handleRemoveLatest(id) {
     var _a;
@@ -306,7 +300,7 @@
     cleanupWrapper(id);
     figma.commitUndo();
     post({ type: source === "swap" ? "swap-latest-removed" : "latest-removed", id });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   function handleToggleLatest(id) {
     var _a;
@@ -320,15 +314,19 @@
     const source = (_a = store.get(id)) == null ? void 0 : _a.source;
     post({ type: source === "swap" ? "swap-latest-toggled" : "latest-toggled", id, visible: wrapper.visible });
   }
+  async function handleCountMarkers() {
+    const nodes = await findAllMarkerFrames();
+    post({ type: "marker-clear-count", count: nodes.length });
+  }
   async function handleClearMarkers() {
-    const nodes = await findAllTaggedNodes();
+    const nodes = await findAllMarkerFrames();
     const count = nodes.length;
     for (const n of nodes) n.remove();
     const clearedIds = Array.from(wrapperStore.keys());
     wrapperStore.clear();
     figma.commitUndo();
     post({ type: "markers-cleared", count, ids: clearedIds });
-    post({ type: "marker-count", count: 0 });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   function nodePath(node) {
     const parts = [];
@@ -547,7 +545,7 @@
       await maybeYieldScan(yieldCounter);
     }
     post({ type: swapScanCancelled ? "swap-scan-cancelled" : "swap-scan-done" });
-    post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
+    post({ type: "marker-count", count: wrapperStore.size });
   }
   function findOwningPage(node) {
     let p = node;
@@ -624,6 +622,9 @@
           break;
         case "select-on-canvas":
           if (msg.ids) await handleSelectOnCanvas(msg.ids);
+          break;
+        case "count-markers":
+          await handleCountMarkers();
           break;
         case "clear-markers":
           await handleClearMarkers();

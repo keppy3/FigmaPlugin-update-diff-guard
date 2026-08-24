@@ -940,7 +940,7 @@ $("placeLatestBtn").addEventListener("click", () => {
 });
 
 $("clearAllLatestBtn").addEventListener("click", () => {
-  post({ type: "clear-markers" });
+  post({ type: "count-markers" });
 });
 
 $("forceUpdateBtn").addEventListener("click", () => {
@@ -1090,6 +1090,28 @@ $("modalConfirm").addEventListener("click", () => {
     post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
   }
   pendingForce = null;
+});
+
+/* ---- 比較用インスタンス一括削除の確認ダイアログ ----
+   件数を確認してから実行できるよう、クリック時点ではまだ削除せず「件数を
+   数えるだけ」のメッセージを送り、返ってきた件数をこのモーダルで見せてから
+   本当に削除するかどうかをユーザーに選んでもらう。 */
+function openClearMarkersConfirm(count: number): void {
+  if (count === 0) {
+    showToast("削除できる比較用インスタンスはありません");
+    return;
+  }
+  $("clearMarkersConfirmBody").textContent = `${count}件の比較用インスタンスをすべて削除します。よろしいですか？`;
+  $("clearMarkersConfirmOverlay").classList.remove("hidden");
+}
+
+$("clearMarkersConfirmCancel").addEventListener("click", () => {
+  $("clearMarkersConfirmOverlay").classList.add("hidden");
+});
+
+$("clearMarkersConfirmOk").addEventListener("click", () => {
+  $("clearMarkersConfirmOverlay").classList.add("hidden");
+  post({ type: "clear-markers" });
 });
 
 /* ---- マーカー（配置済みLatestプレビュー）件数 ---- */
@@ -1960,7 +1982,7 @@ $("swapPlaceBulkBtn").addEventListener("click", () => {
 });
 
 $("swapClearAllBtn").addEventListener("click", () => {
-  post({ type: "clear-markers" });
+  post({ type: "count-markers" });
 });
 
 $("swapForceBulkBtn").addEventListener("click", () => {
@@ -1996,7 +2018,7 @@ $("swapVariantPlaceBulkBtn").addEventListener("click", () => {
 });
 
 $("swapVariantClearAllBtn").addEventListener("click", () => {
-  post({ type: "clear-markers" });
+  post({ type: "count-markers" });
 });
 
 $("swapVariantSelectCanvas").addEventListener("click", () => {
@@ -2108,6 +2130,9 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "marker-count":
       setMarkerCount(msg.count);
+      break;
+    case "marker-clear-count":
+      openClearMarkersConfirm(msg.count);
       break;
     case "library-scan-progress":
       onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
