@@ -237,7 +237,12 @@ async function computeAndSendDiff(
 ): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
-  const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+  // 等倍で書き出す。2倍スケールにする明確な理由が残っておらず（当初の
+  // 試作からの既定値）、pixelmatchは渡した解像度でピクセル差分を検出できる
+  // ため2倍でなくても実用上問題ない。多数のインスタンスをスキャンすると
+  // Before/After画像がbase64で保持され続けるため、解像度は直接メモリ使用量
+  // （ひいてはFigmaクライアントのクラッシュリスク）に効いてくる。
+  const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
 
   // 比較用クローンの置き場所の変遷:
   //   1. ページ直下に逃がす — 軽いが、親のDay/Night等の変数モードを継承
@@ -281,7 +286,7 @@ async function computeAndSendDiff(
     // would make every "after" image a spurious diff. Exported even when
     // sizeChanged, so the UI can still show Current/Latest side by side
     // for that case.
-    const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+    const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
     post({
       type: resultType,
       id: inst.id,
@@ -843,7 +848,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
     if (!swapStrayThumbnailSent.has(groupKey)) {
       swapStrayThumbnailSent.add(groupKey);
       try {
-        thumbnail = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+        thumbnail = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
       } catch {
         // サムネイル取得に失敗しても除外自体は続行する（見た目確認ができないだけ）
       }

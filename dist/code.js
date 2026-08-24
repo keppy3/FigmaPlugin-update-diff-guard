@@ -139,7 +139,7 @@
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
-    const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+    const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
     const clone = inst.clone();
     clone.name = `${inst.name} (diff candidate)`;
     const parent = inst.parent;
@@ -156,7 +156,7 @@
     clone.swapComponent(latest);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     try {
-      const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+      const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
       post({
         type: resultType,
         id: inst.id,
@@ -492,7 +492,7 @@
       if (!swapStrayThumbnailSent.has(groupKey)) {
         swapStrayThumbnailSent.add(groupKey);
         try {
-          thumbnail = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
+          thumbnail = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
         } catch (e) {
         }
       }
