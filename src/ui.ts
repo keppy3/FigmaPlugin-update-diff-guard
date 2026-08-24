@@ -909,7 +909,14 @@ function showBulkBusy(label: string): void {
   show("busy");
   $("busyLabel").textContent = label;
   $("busyStep").textContent = "";
-  ($("busyProgress").style as CSSStyleDeclaration).width = "0%";
+  const fill = $("busyProgress") as HTMLElement;
+  fill.style.width = "0%";
+  // display:noneから表示に切り替わった直後にwidthを変更すると、その時点の
+  // レイアウトがまだ確定しておらずtransitionの起点が正しくコミットされない
+  // ことがある（以降の進捗更新が描画に反映されず0%のまま止まって見える）。
+  // offsetWidthを読んでレイアウトを強制確定させ、以降の更新が確実に描画に
+  // 反映されるようにする。
+  void fill.offsetWidth;
 }
 
 function onBulkProgress(label: string, name: string, index: number, total: number): void {
@@ -1924,7 +1931,10 @@ function showSwapBulkBusy(label: string): void {
   showSwap("busy");
   $("swapBulkBusyLabel").textContent = label;
   $("swapBulkBusyStep").textContent = "";
-  ($("swapBulkBusyProgress").style as CSSStyleDeclaration).width = "0%";
+  const fill = $("swapBulkBusyProgress") as HTMLElement;
+  fill.style.width = "0%";
+  // §showBulkBusyと同じ理由でレイアウトを強制確定させる。
+  void fill.offsetWidth;
 }
 
 function onSwapBulkProgress(label: string, name: string, index: number, total: number): void {

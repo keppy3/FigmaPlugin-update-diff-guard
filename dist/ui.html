@@ -1618,7 +1618,9 @@
     show("busy");
     $("busyLabel").textContent = label;
     $("busyStep").textContent = "";
-    $("busyProgress").style.width = "0%";
+    const fill = $("busyProgress");
+    fill.style.width = "0%";
+    void fill.offsetWidth;
   }
   function onBulkProgress(label, name, index, total) {
     $("busyLabel").textContent = label;
@@ -2407,7 +2409,9 @@
     showSwap("busy");
     $("swapBulkBusyLabel").textContent = label;
     $("swapBulkBusyStep").textContent = "";
-    $("swapBulkBusyProgress").style.width = "0%";
+    const fill = $("swapBulkBusyProgress");
+    fill.style.width = "0%";
+    void fill.offsetWidth;
   }
   function onSwapBulkProgress(label, name, index, total) {
     $("swapBulkBusyLabel").textContent = label;
