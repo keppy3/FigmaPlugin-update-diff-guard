@@ -123,7 +123,7 @@
           continue;
         }
         if (scanCancelled) break;
-        store.set(inst.id, { instance: inst, latestComponent: latest, source: "update" });
+        store.set(inst.id, { instance: inst, latestKey: main.key, source: "update" });
         await computeAndSendDiff(inst, latest, "scan-item-result");
       } catch (e) {
         store.delete(inst.id);
@@ -183,7 +183,14 @@
       return;
     }
     if (jump) jumpToNode(item.instance);
-    item.instance.swapComponent(item.latestComponent);
+    let latest;
+    try {
+      latest = await importComponentWithRetry(item.latestKey);
+    } catch (e) {
+      postError(`\u6700\u65B0\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u306E\u53D6\u5F97\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ${item.instance.name}`);
+      return;
+    }
+    item.instance.swapComponent(latest);
     if (removeLatest !== false) cleanupWrapper(id);
     figma.commitUndo();
     post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
@@ -203,7 +210,8 @@
         total: ids.length
       });
       try {
-        item.instance.swapComponent(item.latestComponent);
+        const latest = await importComponentWithRetry(item.latestKey);
+        item.instance.swapComponent(latest);
         if (removeLatest !== false) cleanupWrapper(ids[i]);
         succeeded.push(ids[i]);
       } catch (e) {
@@ -219,9 +227,9 @@
     const item = store.get(id);
     if (!item) return false;
     const inst = item.instance;
-    const latest = item.latestComponent;
     const parent = inst.parent;
     if (!parent || !("insertChild" in parent)) return false;
+    const latest = await importComponentWithRetry(item.latestKey);
     const wrapper = figma.createFrame();
     wrapper.name = `\u26A0 Latest Preview \u2014 ${inst.name}`;
     wrapper.x = inst.x;
@@ -256,6 +264,7 @@
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
   async function handlePlaceLatestBulk(ids) {
+    var _a;
     const succeeded = [];
     let bulkSource = "update";
     for (let i = 0; i < ids.length; i++) {
@@ -269,7 +278,11 @@
           total: ids.length
         });
       }
-      if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
+      try {
+        if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
+      } catch (e) {
+        postError(`\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306E\u914D\u7F6E\u306B\u5931\u6557\u3057\u307E\u3057\u305F: ${(_a = item == null ? void 0 : item.instance.name) != null ? _a : ids[i]}`);
+      }
     }
     figma.commitUndo();
     post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
@@ -505,7 +518,7 @@
           continue;
         }
         if (swapScanCancelled) break;
-        store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
+        store.set(inst.id, { instance: inst, latestKey: result.key, source: "swap" });
         const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
         await computeAndSendDiff(inst, target, resultType);
       } catch (e) {

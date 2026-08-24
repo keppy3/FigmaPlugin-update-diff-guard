@@ -43,7 +43,13 @@ type StoreSource = "update" | "swap";
 
 interface StoredItem {
   instance: InstanceNode;
-  latestComponent: ComponentNode;
+  // スキャン時に一度だけ解決したComponentNodeそのものではなく、そのkeyを
+  // 覚えておく。適用/配置はスキャンからかなり時間が空いてから押されることも
+  // 多く（ユーザーが結果を見比べている間ずっと）、その間に参照が無効化されて
+  // いる可能性がある（比較画像は作れたのに実際の適用だけ失敗する原因になって
+  // いた）。適用の直前に毎回importComponentWithRetryで取り直すことで、
+  // Figma純正の更新機能と同じく「今その瞬間の最新」を反映する。
+  latestKey: string;
   source: StoreSource;
 }
 
@@ -205,7 +211,7 @@ async function runScan(scope: ScopeMode): Promise<void> {
 
       if (scanCancelled) break;
 
-      store.set(inst.id, { instance: inst, latestComponent: latest, source: "update" });
+      store.set(inst.id, { instance: inst, latestKey: main.key, source: "update" });
       await computeAndSendDiff(inst, latest, "scan-item-result");
     } catch {
       // The instance (or its parent) was likely deleted/moved by the user
@@ -316,10 +322,21 @@ async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): 
   // For individual "このまま更新" only: jump before the write so the user
   // sees what they're about to affect, not just what they just affected.
   if (jump) jumpToNode(item.instance);
+
+  // スキャン時に解決したComponentNodeをそのまま使い回さず、適用の直前に毎回
+  // キーで取り直す（§StoredItem.latestKeyのコメント参照）。
+  let latest: ComponentNode;
+  try {
+    latest = await importComponentWithRetry(item.latestKey);
+  } catch {
+    postError(`最新コンポーネントの取得に失敗しました: ${item.instance.name}`);
+    return;
+  }
+
   // The one line that matters most for this whole project: swap in-place,
   // same node id, so anything (e.g. a FigJam arrow) that references this
   // node keeps working.
-  item.instance.swapComponent(item.latestComponent);
+  item.instance.swapComponent(latest);
   if (removeLatest !== false) cleanupWrapper(id);
   figma.commitUndo();
   post({ type: item.source === "swap" ? "swap-applied" : "applied", id });
@@ -343,7 +360,8 @@ async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<v
       total: ids.length,
     });
     try {
-      item.instance.swapComponent(item.latestComponent);
+      const latest = await importComponentWithRetry(item.latestKey);
+      item.instance.swapComponent(latest);
       if (removeLatest !== false) cleanupWrapper(ids[i]);
       succeeded.push(ids[i]);
     } catch {
@@ -369,9 +387,15 @@ async function placeLatestOne(id: string): Promise<boolean> {
   const item = store.get(id);
   if (!item) return false;
   const inst = item.instance;
-  const latest = item.latestComponent;
   const parent = inst.parent;
   if (!parent || !("insertChild" in parent)) return false;
+
+  // スキャン時のComponentNodeを使い回さず、配置の直前に毎回キーで取り直す
+  // （§StoredItem.latestKeyのコメント参照）。ここで投げた例外は呼び出し元
+  // （handlePlaceLatest/handlePlaceLatestBulk）のtry節で拾われず、外側の
+  // figma.ui.onmessageまで伝播してpostErrorされる — 「対象が見つかりません」
+  // ではなく実際のエラー内容がそのままUIに出る。
+  const latest = await importComponentWithRetry(item.latestKey);
 
   const wrapper = figma.createFrame();
   wrapper.name = `⚠ Latest Preview — ${inst.name}`;
@@ -429,7 +453,13 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
         total: ids.length,
       });
     }
-    if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
+    try {
+      if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
+    } catch {
+      // 1件の最新コンポーネント再取得失敗で一括処理全体を止めない（§handleApplyBulk
+      // と同じ考え方）。
+      postError(`比較用インスタンスの配置に失敗しました: ${item?.instance.name ?? ids[i]}`);
+    }
   }
   figma.commitUndo();
   post({ type: bulkSource === "swap" ? "swap-place-latest-bulk-done" : "place-latest-bulk-done", ids: succeeded });
@@ -827,7 +857,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
 
       if (swapScanCancelled) break;
 
-      store.set(inst.id, { instance: inst, latestComponent: target, source: "swap" });
+      store.set(inst.id, { instance: inst, latestKey: result.key, source: "swap" });
       const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
       await computeAndSendDiff(inst, target, resultType);
     } catch {
