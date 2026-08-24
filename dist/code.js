@@ -124,7 +124,7 @@
         }
         if (scanCancelled) break;
         store.set(inst.id, { instance: inst, latestKey: main.key, source: "update" });
-        await computeAndSendDiff(inst, latest, "scan-item-result");
+        await computeAndSendDiff(inst, latest, "scan-item-result", main.name);
       } catch (e) {
         store.delete(inst.id);
         post({ type: "scan-item-excluded", name: inst.name, reason: "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09" });
@@ -135,7 +135,7 @@
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
     post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
   }
-  async function computeAndSendDiff(inst, latest, resultType) {
+  async function computeAndSendDiff(inst, latest, resultType, mainComponentName) {
     var _a;
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
@@ -161,6 +161,9 @@
         type: resultType,
         id: inst.id,
         name: inst.name,
+        mainComponentName,
+        width: beforeWidth,
+        height: beforeHeight,
         sizeChanged,
         before: beforeBytes,
         after: afterBytes
@@ -521,7 +524,7 @@
         if (swapScanCancelled) break;
         store.set(inst.id, { instance: inst, latestKey: result.key, source: "swap" });
         const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
-        await computeAndSendDiff(inst, target, resultType);
+        await computeAndSendDiff(inst, target, resultType, matchName);
       } catch (e) {
         store.delete(inst.id);
         await postSwapExcluded(inst, "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09", "other");

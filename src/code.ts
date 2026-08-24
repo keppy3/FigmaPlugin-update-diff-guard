@@ -212,7 +212,7 @@ async function runScan(scope: ScopeMode): Promise<void> {
       if (scanCancelled) break;
 
       store.set(inst.id, { instance: inst, latestKey: main.key, source: "update" });
-      await computeAndSendDiff(inst, latest, "scan-item-result");
+      await computeAndSendDiff(inst, latest, "scan-item-result", main.name);
     } catch {
       // The instance (or its parent) was likely deleted/moved by the user
       // while this scan was mid-flight. Skip it and keep going rather than
@@ -229,7 +229,12 @@ async function runScan(scope: ScopeMode): Promise<void> {
   post({ type: "marker-count", count: (await findAllTaggedNodes()).length });
 }
 
-async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, resultType: string): Promise<void> {
+async function computeAndSendDiff(
+  inst: InstanceNode,
+  latest: ComponentNode,
+  resultType: string,
+  mainComponentName: string
+): Promise<void> {
   const beforeWidth = inst.width;
   const beforeHeight = inst.height;
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 2 } });
@@ -281,6 +286,9 @@ async function computeAndSendDiff(inst: InstanceNode, latest: ComponentNode, res
       type: resultType,
       id: inst.id,
       name: inst.name,
+      mainComponentName,
+      width: beforeWidth,
+      height: beforeHeight,
       sizeChanged,
       before: beforeBytes,
       after: afterBytes,
@@ -865,7 +873,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
 
       store.set(inst.id, { instance: inst, latestKey: result.key, source: "swap" });
       const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
-      await computeAndSendDiff(inst, target, resultType);
+      await computeAndSendDiff(inst, target, resultType, matchName);
     } catch {
       store.delete(inst.id);
       await postSwapExcluded(inst, "比較中にエラーが発生しました（編集された可能性があります）", "other");

@@ -18,6 +18,8 @@ interface RowData {
   id: string;
   name: string;
   status: RowStatus;
+  mainComponentName: string; // ソート用。インスタンスの表示名（オーバーライドされ得る）ではなく参照先メインコンポーネントの名前
+  area: number; // ソート用。インスタンス自身のwidth * height（見た目差分の有無に関わらず安定した値）
   imageUrl?: string; // clean only: single thumbnail (Current === Latest)
   currentUrl?: string; // diff only
   latestUrl?: string; // diff only
@@ -44,6 +46,67 @@ const DOUBLE_CHEVRON_DOWN =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 4 4-4"/><path d="M4 9l4 4 4-4"/></svg>';
 const DOUBLE_CHEVRON_UP =
   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l4-4 4 4"/><path d="M4 7l4-4 4 4"/></svg>';
+
+const SORT_ICON =
+  '<svg class="sort-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v8M4 12l-2-2M4 12l2-2M12 12V4M12 4l2 2M12 4l-2 2"/></svg>';
+const SORT_DIR_ASC =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M8 3L4 7M8 3l4 4"/></svg>';
+const SORT_DIR_DESC =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M8 13l-4-4M8 13l4-4"/></svg>';
+const SORT_CHECK =
+  '<svg class="check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 5"/></svg>';
+
+/* ---- 並び替え ----
+   5つのタブ（更新の見た目差分なし/あり、スワップの見た目差分なし/あり/
+   バリアント不一致）それぞれが独立したソート状態を持つ。スキャンのたびに
+   そのスキャンが影響するタブ群だけデフォルトへリセットする
+   （§onScanStarted/onSwapScanStarted参照）。 */
+type SortKey = "default" | "mainComponentName" | "size";
+type SortDir = "asc" | "desc";
+interface SortState {
+  key: SortKey;
+  dir: SortDir;
+}
+const SORT_KEY_LABELS: Record<SortKey, string> = {
+  default: "デフォルト（レイヤー順）",
+  mainComponentName: "メインコンポーネント名",
+  size: "コンポーネントサイズ",
+};
+const SORT_KEYS: SortKey[] = ["default", "mainComponentName", "size"];
+
+type SortTab = "clean" | "diff" | "swapClean" | "swapDiff" | "swapVariant";
+const sortState: Record<SortTab, SortState> = {
+  clean: { key: "default", dir: "asc" },
+  diff: { key: "default", dir: "asc" },
+  swapClean: { key: "default", dir: "asc" },
+  swapDiff: { key: "default", dir: "asc" },
+  swapVariant: { key: "default", dir: "asc" },
+};
+
+function compareRows(a: RowData, b: RowData, key: SortKey): number {
+  if (key === "mainComponentName") return a.mainComponentName.localeCompare(b.mainComponentName, "ja");
+  if (key === "size") return a.area - b.area;
+  return 0; // "default" — 呼び出し側で元の配列順（＝スキャン到達順）をそのまま使う
+}
+
+// レンダリングとShift範囲選択の両方が「今画面に表示されている順序」で一致
+// している必要があるため、一元化したこの関数を両方から呼ぶ。cleanIds等の
+// 元配列そのものは並び替えない（「デフォルト」＝スキャン到達順という基準を
+// 保持するため）。
+function getSortedIds(ids: string[], rowsMap: Map<string, RowData>, sort: SortState): string[] {
+  let sorted: string[];
+  if (sort.key === "default") {
+    sorted = ids;
+  } else {
+    sorted = [...ids].sort((idA, idB) => {
+      const a = rowsMap.get(idA);
+      const b = rowsMap.get(idB);
+      if (!a || !b) return 0;
+      return compareRows(a, b, sort.key);
+    });
+  }
+  return sort.dir === "asc" ? sorted : [...sorted].reverse();
+}
 
 const EXCLUDED_GROUP_ID = "__excluded__"; // 対象外アコーディオンのdata-id。expandedIdsに同居させ、行の開閉と同じ仕組みで管理する
 
@@ -320,17 +383,25 @@ function loadImageData(bytes: Uint8Array): Promise<{ data: ImageData; width: num
 interface ScanItemMsg {
   id: string;
   name: string;
+  mainComponentName: string;
+  width: number;
+  height: number;
   sizeChanged: boolean;
   before?: Uint8Array;
   after?: Uint8Array;
 }
 
 async function processDiff(msg: ScanItemMsg): Promise<RowData> {
+  const mainComponentName = msg.mainComponentName;
+  const area = msg.width * msg.height;
+
   if (msg.sizeChanged || !msg.before || !msg.after) {
     return {
       id: msg.id,
       name: msg.name,
       status: "diff",
+      mainComponentName,
+      area,
       sizeMismatch: true,
       currentUrl: msg.before ? dataUrlFromBytes(msg.before) : undefined,
       latestUrl: msg.after ? dataUrlFromBytes(msg.after) : undefined,
@@ -344,6 +415,8 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
       id: msg.id,
       name: msg.name,
       status: "diff",
+      mainComponentName,
+      area,
       sizeMismatch: true,
       currentUrl: dataUrlFromBytes(msg.before),
       latestUrl: dataUrlFromBytes(msg.after),
@@ -357,7 +430,7 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
   const numDiffPixels = pixelmatch(before.data.data, after.data.data, null, width, height, { threshold: 0.1 });
 
   if (numDiffPixels === 0) {
-    return { id: msg.id, name: msg.name, status: "clean", imageUrl: dataUrlFromBytes(msg.after) };
+    return { id: msg.id, name: msg.name, status: "clean", mainComponentName, area, imageUrl: dataUrlFromBytes(msg.after) };
   }
 
   const diffPercent = (numDiffPixels / (width * height)) * 100;
@@ -365,6 +438,8 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
     id: msg.id,
     name: msg.name,
     status: "diff",
+    mainComponentName,
+    area,
     diffPercent,
     currentUrl: dataUrlFromBytes(msg.before),
     latestUrl: dataUrlFromBytes(msg.after),
@@ -399,6 +474,8 @@ function onScanStarted(total: number): void {
   Object.keys(checked).forEach((k) => delete checked[k]);
   Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
   Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
+  sortState.clean = { key: "default", dir: "asc" };
+  sortState.diff = { key: "default", dir: "asc" };
   scanning = true;
   scanTotal = total;
   scanDone = 0;
@@ -559,20 +636,25 @@ function renderTabs(justEnteredId?: string): void {
   $("cleanCount").textContent = `(${cleanIds.length})`;
   $("diffCount").textContent = `(${diffIds.length})`;
 
-  let cleanHtml = cleanIds.length
-    ? cleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("")
+  const sortedCleanIds = getSortedIds(cleanIds, rows, sortState.clean);
+  const sortedDiffIds = getSortedIds(diffIds, rows, sortState.diff);
+
+  let cleanHtml = sortedCleanIds.length
+    ? sortedCleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("")
     : emptyState("clean");
   if (excluded.length || scanning) cleanHtml += excludedGroupHtml();
   $("cleanList").innerHTML = cleanHtml;
 
-  $("diffList").innerHTML = diffIds.length
-    ? diffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("")
+  $("diffList").innerHTML = sortedDiffIds.length
+    ? sortedDiffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("")
     : emptyState("diff");
 
   wireRowEvents();
   updateFooterButtons();
   updateListToolbarToggles("clean");
   updateListToolbarToggles("diff");
+  updateSortControl("clean");
+  updateSortControl("diff");
 }
 
 function wireRowEvents(): void {
@@ -635,7 +717,9 @@ function wireRowEvents(): void {
 function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   const id = cb.getAttribute("data-id")!;
   const tab: "clean" | "diff" = cleanIds.includes(id) ? "clean" : "diff";
-  const list = tab === "clean" ? cleanIds : diffIds;
+  // Shift範囲選択は「今画面に表示されている順序」（並び替え適用後）で動く
+  // 必要があるので、元配列ではなく現在の並び替え結果を使う。
+  const list = getSortedIds(tab === "clean" ? cleanIds : diffIds, rows, sortState[tab]);
   const index = list.indexOf(id);
   const newState = cb.checked; // click already toggled the native checkbox by the time this fires
 
@@ -689,6 +773,77 @@ function updateListToolbarToggles(tab: "clean" | "diff"): void {
   expandToggle.innerHTML = allExpanded ? DOUBLE_CHEVRON_UP : DOUBLE_CHEVRON_DOWN;
   expandToggle.title = allExpanded ? "すべて折りたたむ" : "すべて展開";
   expandToggle.disabled = list.length === 0;
+}
+
+/* ---- 並び替えコントロール（5タブ共通） ---- */
+let openSortMenuTab: SortTab | null = null;
+
+function closeSortMenu(): void {
+  if (!openSortMenuTab) return;
+  $(`${openSortMenuTab}SortMenu`).classList.add("hidden");
+  openSortMenuTab = null;
+}
+
+function rerenderForSortTab(tab: SortTab): void {
+  if (tab === "clean" || tab === "diff") renderTabs();
+  else renderSwapTabs();
+}
+
+function sortMenuItemHtml(tab: SortTab, key: SortKey): string {
+  const active = sortState[tab].key === key;
+  return `<button class="sort-menu-item${active ? " active" : ""}" data-sort-key="${key}">
+    <span>${SORT_KEY_LABELS[key]}</span>
+    ${active ? SORT_CHECK : ""}
+  </button>`;
+}
+
+function openSortMenu(tab: SortTab): void {
+  const menu = $(`${tab}SortMenu`);
+  menu.innerHTML = SORT_KEYS.map((key) => sortMenuItemHtml(tab, key)).join("");
+  menu.querySelectorAll<HTMLButtonElement>("[data-sort-key]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      sortState[tab].key = btn.getAttribute("data-sort-key") as SortKey;
+      closeSortMenu();
+      rerenderForSortTab(tab);
+    });
+  });
+  menu.classList.remove("hidden");
+  openSortMenuTab = tab;
+}
+
+function bindSortControl(tab: SortTab): void {
+  $(`${tab}SortKeyBtn`).addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (openSortMenuTab === tab) {
+      closeSortMenu();
+    } else {
+      closeSortMenu();
+      openSortMenu(tab);
+    }
+  });
+  $(`${tab}SortDirBtn`).addEventListener("click", () => {
+    sortState[tab].dir = sortState[tab].dir === "asc" ? "desc" : "asc";
+    rerenderForSortTab(tab);
+  });
+}
+(["clean", "diff", "swapClean", "swapDiff", "swapVariant"] as SortTab[]).forEach(bindSortControl);
+document.addEventListener("click", () => closeSortMenu());
+
+function updateSortControl(tab: SortTab): void {
+  const keyBtn = $(`${tab}SortKeyBtn`);
+  const caret =
+    '<svg class="caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+  keyBtn.innerHTML = `${SORT_ICON}<span>${SORT_KEY_LABELS[sortState[tab].key]}</span>${caret}`;
+
+  const dirBtn = $(`${tab}SortDirBtn`) as HTMLButtonElement;
+  const isAsc = sortState[tab].dir === "asc";
+  dirBtn.innerHTML = isAsc ? SORT_DIR_ASC : SORT_DIR_DESC;
+  dirBtn.title = isAsc ? "降順に切り替え" : "昇順に切り替え";
+
+  // 開いたままレンダリングが走った場合（バックグラウンドの更新等）に備えて、
+  // メニューが開いていれば選択チェックの表示も同期しておく。
+  if (openSortMenuTab === tab) openSortMenu(tab);
 }
 
 function updateFooterButtons(): void {
@@ -1241,6 +1396,9 @@ function onSwapScanStarted(total: number): void {
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
   Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
+  sortState.swapClean = { key: "default", dir: "asc" };
+  sortState.swapDiff = { key: "default", dir: "asc" };
+  sortState.swapVariant = { key: "default", dir: "asc" };
   swapScanning = true;
   swapScanTotal = total;
   swapScanDone = 0;
@@ -1308,7 +1466,16 @@ async function onSwapScanItemVariantResult(msg: ScanItemMsg): Promise<void> {
   swapRows.set(
     row.id,
     row.status === "clean"
-      ? { id: row.id, name: row.name, status: "diff", diffPercent: 0, currentUrl: row.imageUrl, latestUrl: row.imageUrl }
+      ? {
+          id: row.id,
+          name: row.name,
+          status: "diff",
+          mainComponentName: row.mainComponentName,
+          area: row.area,
+          diffPercent: 0,
+          currentUrl: row.imageUrl,
+          latestUrl: row.imageUrl,
+        }
       : row
   );
   swapVariantIds.push(row.id);
@@ -1521,18 +1688,22 @@ function renderSwapTabs(justEnteredId?: string): void {
   $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
   $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
 
-  let swapCleanHtml = swapCleanIds.length
-    ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
+  const sortedSwapCleanIds = getSortedIds(swapCleanIds, swapRows, sortState.swapClean);
+  const sortedSwapDiffIds = getSortedIds(swapDiffIds, swapRows, sortState.swapDiff);
+  const sortedSwapVariantIds = getSortedIds(swapVariantIds, swapRows, sortState.swapVariant);
+
+  let swapCleanHtml = sortedSwapCleanIds.length
+    ? sortedSwapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
     : swapEmptyState("clean");
   if (swapExcluded.length || swapScanning) swapCleanHtml += swapExcludedGroupHtml();
   $("swapCleanList").innerHTML = swapCleanHtml;
 
-  $("swapDiffList").innerHTML = swapDiffIds.length
-    ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("")
+  $("swapDiffList").innerHTML = sortedSwapDiffIds.length
+    ? sortedSwapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("")
     : swapEmptyState("diff");
 
-  $("swapVariantList").innerHTML = swapVariantIds.length
-    ? swapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("")
+  $("swapVariantList").innerHTML = sortedSwapVariantIds.length
+    ? sortedSwapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("")
     : swapEmptyState("variant");
 
   renderSwapStray();
@@ -1542,6 +1713,9 @@ function renderSwapTabs(justEnteredId?: string): void {
   updateSwapListToolbarToggles("clean");
   updateSwapListToolbarToggles("diff");
   updateSwapListToolbarToggles("variant");
+  updateSortControl("swapClean");
+  updateSortControl("swapDiff");
+  updateSortControl("swapVariant");
 }
 
 function wireSwapRowEvents(): void {
@@ -1604,7 +1778,10 @@ function wireSwapRowEvents(): void {
 function handleSwapCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   const id = cb.getAttribute("data-id")!;
   const tab: "clean" | "diff" | "variant" = swapCleanIds.includes(id) ? "clean" : swapDiffIds.includes(id) ? "diff" : "variant";
-  const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+  const sortTab: SortTab = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
+  const rawList = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+  // Shift範囲選択は表示中の並び替え結果に合わせる（§handleCheckboxClickと同じ理由）。
+  const list = getSortedIds(rawList, swapRows, sortState[sortTab]);
   const index = list.indexOf(id);
   const newState = cb.checked;
 

@@ -205,6 +205,39 @@
   .list-toolbar-icon-btn[disabled] { color: var(--text-faint); cursor: default; pointer-events: none; }
   .list-toolbar-icon-btn.push-right { margin-left: auto; }
 
+  /* ---- 並び替え（デフォルト/メインコンポーネント名/コンポーネントサイズ） ---- */
+  .sort-wrap { position: relative; flex: none; display: flex; align-items: center; gap: 6px; }
+  .sort-key-btn {
+    display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 6px; border-radius: 999px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--text); font-size: 10px;
+    font-weight: 600; cursor: pointer; max-width: 128px; flex: none;
+  }
+  .sort-key-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sort-key-btn svg.sort-icon { width: 10px; height: 10px; color: var(--text-faint); flex: none; }
+  .sort-key-btn svg.caret { width: 8px; height: 8px; color: var(--text-faint); flex: none; }
+  .sort-key-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .sort-dir-btn {
+    display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--text-muted); cursor: pointer; flex: none; padding: 0;
+  }
+  .sort-dir-btn svg { width: 11px; height: 11px; }
+  .sort-dir-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+  .sort-menu {
+    position: absolute; top: calc(100% + 4px); left: 0; width: 200px; background: var(--panel-bg);
+    border: 1px solid var(--panel-border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+    z-index: 20; overflow: hidden;
+  }
+  .sort-menu-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; font-size: 11px;
+    font-weight: 600; color: var(--text); cursor: pointer; border-bottom: 1px solid var(--divider); width: 100%;
+    background: none; border-left: none; border-right: none; border-top: none; text-align: left;
+  }
+  .sort-menu-item:last-child { border-bottom: none; }
+  .sort-menu-item:hover { background: var(--row-hover); }
+  .sort-menu-item.active { color: var(--accent-strong); background: var(--accent-bg); }
+  .sort-menu-item .check { width: 12px; height: 12px; color: var(--accent-strong); flex: none; }
+
   /* リスト下端・一括処理ボタンの直上に置く「すべてのインスタンスを選択」用。
      チェック済みインスタンスをFigmaキャンバス上で選択する機能で、プラグイン内
      チェックボックスの一括ON/OFF（上部の.list-toolbar）とは別物なので分けて配置する。 */
@@ -456,6 +489,11 @@
         <div class="tab-panel" data-panel="clean">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="cleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="cleanSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="cleanSortDirBtn"></button>
+              <div class="sort-menu hidden" id="cleanSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="cleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="cleanList"></div>
@@ -472,6 +510,11 @@
         <div class="tab-panel hidden" data-panel="diff">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="diffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="diffSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="diffSortDirBtn"></button>
+              <div class="sort-menu hidden" id="diffSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="diffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="diffList"></div>
@@ -566,6 +609,11 @@
         <div class="tab-panel" data-swappanel="clean">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="swapCleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="swapCleanSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="swapCleanSortDirBtn"></button>
+              <div class="sort-menu hidden" id="swapCleanSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="swapCleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapCleanList"></div>
@@ -582,6 +630,11 @@
         <div class="tab-panel hidden" data-swappanel="diff">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="swapDiffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="swapDiffSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="swapDiffSortDirBtn"></button>
+              <div class="sort-menu hidden" id="swapDiffSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="swapDiffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapDiffList"></div>
@@ -602,6 +655,11 @@
         <div class="tab-panel hidden" data-swappanel="variant">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="swapVariantSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="swapVariantSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="swapVariantSortDirBtn"></button>
+              <div class="sort-menu hidden" id="swapVariantSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="swapVariantExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapVariantList"></div>
@@ -915,6 +973,42 @@
   var JUMP_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M14 6V2h-4M10 14h4v-4M2 10v4h4"/></svg>';
   var DOUBLE_CHEVRON_DOWN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 4 4-4"/><path d="M4 9l4 4 4-4"/></svg>';
   var DOUBLE_CHEVRON_UP = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l4-4 4 4"/><path d="M4 7l4-4 4 4"/></svg>';
+  var SORT_ICON = '<svg class="sort-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v8M4 12l-2-2M4 12l2-2M12 12V4M12 4l2 2M12 4l-2 2"/></svg>';
+  var SORT_DIR_ASC = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M8 3L4 7M8 3l4 4"/></svg>';
+  var SORT_DIR_DESC = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M8 13l-4-4M8 13l4-4"/></svg>';
+  var SORT_CHECK = '<svg class="check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 5"/></svg>';
+  var SORT_KEY_LABELS = {
+    default: "\u30C7\u30D5\u30A9\u30EB\u30C8\uFF08\u30EC\u30A4\u30E4\u30FC\u9806\uFF09",
+    mainComponentName: "\u30E1\u30A4\u30F3\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u540D",
+    size: "\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30B5\u30A4\u30BA"
+  };
+  var SORT_KEYS = ["default", "mainComponentName", "size"];
+  var sortState = {
+    clean: { key: "default", dir: "asc" },
+    diff: { key: "default", dir: "asc" },
+    swapClean: { key: "default", dir: "asc" },
+    swapDiff: { key: "default", dir: "asc" },
+    swapVariant: { key: "default", dir: "asc" }
+  };
+  function compareRows(a, b, key) {
+    if (key === "mainComponentName") return a.mainComponentName.localeCompare(b.mainComponentName, "ja");
+    if (key === "size") return a.area - b.area;
+    return 0;
+  }
+  function getSortedIds(ids, rowsMap, sort) {
+    let sorted;
+    if (sort.key === "default") {
+      sorted = ids;
+    } else {
+      sorted = [...ids].sort((idA, idB) => {
+        const a = rowsMap.get(idA);
+        const b = rowsMap.get(idB);
+        if (!a || !b) return 0;
+        return compareRows(a, b, sort.key);
+      });
+    }
+    return sort.dir === "asc" ? sorted : [...sorted].reverse();
+  }
   var EXCLUDED_GROUP_ID = "__excluded__";
   var rows = /* @__PURE__ */ new Map();
   var cleanIds = [];
@@ -1104,11 +1198,15 @@
     });
   }
   async function processDiff(msg) {
+    const mainComponentName = msg.mainComponentName;
+    const area = msg.width * msg.height;
     if (msg.sizeChanged || !msg.before || !msg.after) {
       return {
         id: msg.id,
         name: msg.name,
         status: "diff",
+        mainComponentName,
+        area,
         sizeMismatch: true,
         currentUrl: msg.before ? dataUrlFromBytes(msg.before) : void 0,
         latestUrl: msg.after ? dataUrlFromBytes(msg.after) : void 0
@@ -1121,6 +1219,8 @@
         id: msg.id,
         name: msg.name,
         status: "diff",
+        mainComponentName,
+        area,
         sizeMismatch: true,
         currentUrl: dataUrlFromBytes(msg.before),
         latestUrl: dataUrlFromBytes(msg.after)
@@ -1129,13 +1229,15 @@
     const { width, height } = before;
     const numDiffPixels = (0, import_pixelmatch.default)(before.data.data, after.data.data, null, width, height, { threshold: 0.1 });
     if (numDiffPixels === 0) {
-      return { id: msg.id, name: msg.name, status: "clean", imageUrl: dataUrlFromBytes(msg.after) };
+      return { id: msg.id, name: msg.name, status: "clean", mainComponentName, area, imageUrl: dataUrlFromBytes(msg.after) };
     }
     const diffPercent = numDiffPixels / (width * height) * 100;
     return {
       id: msg.id,
       name: msg.name,
       status: "diff",
+      mainComponentName,
+      area,
       diffPercent,
       currentUrl: dataUrlFromBytes(msg.before),
       latestUrl: dataUrlFromBytes(msg.after)
@@ -1164,6 +1266,8 @@
     Object.keys(checked).forEach((k) => delete checked[k]);
     Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
     Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
+    sortState.clean = { key: "default", dir: "asc" };
+    sortState.diff = { key: "default", dir: "asc" };
     scanning = true;
     scanTotal = total;
     scanDone = 0;
@@ -1294,14 +1398,18 @@
   function renderTabs(justEnteredId) {
     $("cleanCount").textContent = `(${cleanIds.length})`;
     $("diffCount").textContent = `(${diffIds.length})`;
-    let cleanHtml = cleanIds.length ? cleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("") : emptyState("clean");
+    const sortedCleanIds = getSortedIds(cleanIds, rows, sortState.clean);
+    const sortedDiffIds = getSortedIds(diffIds, rows, sortState.diff);
+    let cleanHtml = sortedCleanIds.length ? sortedCleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("") : emptyState("clean");
     if (excluded.length || scanning) cleanHtml += excludedGroupHtml();
     $("cleanList").innerHTML = cleanHtml;
-    $("diffList").innerHTML = diffIds.length ? diffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("") : emptyState("diff");
+    $("diffList").innerHTML = sortedDiffIds.length ? sortedDiffIds.map((id) => diffRowHtml(id, id === justEnteredId)).join("") : emptyState("diff");
     wireRowEvents();
     updateFooterButtons();
     updateListToolbarToggles("clean");
     updateListToolbarToggles("diff");
+    updateSortControl("clean");
+    updateSortControl("diff");
   }
   function wireRowEvents() {
     document.querySelectorAll("#resultView .row").forEach((details) => {
@@ -1361,7 +1469,7 @@
   function handleCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");
     const tab = cleanIds.includes(id) ? "clean" : "diff";
-    const list = tab === "clean" ? cleanIds : diffIds;
+    const list = getSortedIds(tab === "clean" ? cleanIds : diffIds, rows, sortState[tab]);
     const index = list.indexOf(id);
     const newState = cb.checked;
     if (e.shiftKey && lastClickedIndex && lastClickedIndex.tab === tab) {
@@ -1404,6 +1512,64 @@
     expandToggle.innerHTML = allExpanded ? DOUBLE_CHEVRON_UP : DOUBLE_CHEVRON_DOWN;
     expandToggle.title = allExpanded ? "\u3059\u3079\u3066\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u5C55\u958B";
     expandToggle.disabled = list.length === 0;
+  }
+  var openSortMenuTab = null;
+  function closeSortMenu() {
+    if (!openSortMenuTab) return;
+    $(`${openSortMenuTab}SortMenu`).classList.add("hidden");
+    openSortMenuTab = null;
+  }
+  function rerenderForSortTab(tab) {
+    if (tab === "clean" || tab === "diff") renderTabs();
+    else renderSwapTabs();
+  }
+  function sortMenuItemHtml(tab, key) {
+    const active = sortState[tab].key === key;
+    return `<button class="sort-menu-item${active ? " active" : ""}" data-sort-key="${key}">
+    <span>${SORT_KEY_LABELS[key]}</span>
+    ${active ? SORT_CHECK : ""}
+  </button>`;
+  }
+  function openSortMenu(tab) {
+    const menu = $(`${tab}SortMenu`);
+    menu.innerHTML = SORT_KEYS.map((key) => sortMenuItemHtml(tab, key)).join("");
+    menu.querySelectorAll("[data-sort-key]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        sortState[tab].key = btn.getAttribute("data-sort-key");
+        closeSortMenu();
+        rerenderForSortTab(tab);
+      });
+    });
+    menu.classList.remove("hidden");
+    openSortMenuTab = tab;
+  }
+  function bindSortControl(tab) {
+    $(`${tab}SortKeyBtn`).addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (openSortMenuTab === tab) {
+        closeSortMenu();
+      } else {
+        closeSortMenu();
+        openSortMenu(tab);
+      }
+    });
+    $(`${tab}SortDirBtn`).addEventListener("click", () => {
+      sortState[tab].dir = sortState[tab].dir === "asc" ? "desc" : "asc";
+      rerenderForSortTab(tab);
+    });
+  }
+  ["clean", "diff", "swapClean", "swapDiff", "swapVariant"].forEach(bindSortControl);
+  document.addEventListener("click", () => closeSortMenu());
+  function updateSortControl(tab) {
+    const keyBtn = $(`${tab}SortKeyBtn`);
+    const caret = '<svg class="caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+    keyBtn.innerHTML = `${SORT_ICON}<span>${SORT_KEY_LABELS[sortState[tab].key]}</span>${caret}`;
+    const dirBtn = $(`${tab}SortDirBtn`);
+    const isAsc = sortState[tab].dir === "asc";
+    dirBtn.innerHTML = isAsc ? SORT_DIR_ASC : SORT_DIR_DESC;
+    dirBtn.title = isAsc ? "\u964D\u9806\u306B\u5207\u308A\u66FF\u3048" : "\u6607\u9806\u306B\u5207\u308A\u66FF\u3048";
+    if (openSortMenuTab === tab) openSortMenu(tab);
   }
   function updateFooterButtons() {
     const cleanChecked = cleanIds.filter((id) => checked[id]).length;
@@ -1811,6 +1977,9 @@
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
     Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
     Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
+    sortState.swapClean = { key: "default", dir: "asc" };
+    sortState.swapDiff = { key: "default", dir: "asc" };
+    sortState.swapVariant = { key: "default", dir: "asc" };
     swapScanning = true;
     swapScanTotal = total;
     swapScanDone = 0;
@@ -1866,7 +2035,16 @@
     const row = await processDiff(msg);
     swapRows.set(
       row.id,
-      row.status === "clean" ? { id: row.id, name: row.name, status: "diff", diffPercent: 0, currentUrl: row.imageUrl, latestUrl: row.imageUrl } : row
+      row.status === "clean" ? {
+        id: row.id,
+        name: row.name,
+        status: "diff",
+        mainComponentName: row.mainComponentName,
+        area: row.area,
+        diffPercent: 0,
+        currentUrl: row.imageUrl,
+        latestUrl: row.imageUrl
+      } : row
     );
     swapVariantIds.push(row.id);
     swapChecked[row.id] = true;
@@ -2039,17 +2217,23 @@
     $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
     $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
     $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
-    let swapCleanHtml = swapCleanIds.length ? swapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
+    const sortedSwapCleanIds = getSortedIds(swapCleanIds, swapRows, sortState.swapClean);
+    const sortedSwapDiffIds = getSortedIds(swapDiffIds, swapRows, sortState.swapDiff);
+    const sortedSwapVariantIds = getSortedIds(swapVariantIds, swapRows, sortState.swapVariant);
+    let swapCleanHtml = sortedSwapCleanIds.length ? sortedSwapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
     if (swapExcluded.length || swapScanning) swapCleanHtml += swapExcludedGroupHtml();
     $("swapCleanList").innerHTML = swapCleanHtml;
-    $("swapDiffList").innerHTML = swapDiffIds.length ? swapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
-    $("swapVariantList").innerHTML = swapVariantIds.length ? swapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("variant");
+    $("swapDiffList").innerHTML = sortedSwapDiffIds.length ? sortedSwapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
+    $("swapVariantList").innerHTML = sortedSwapVariantIds.length ? sortedSwapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("variant");
     renderSwapStray();
     wireSwapRowEvents();
     updateSwapFooterButtons();
     updateSwapListToolbarToggles("clean");
     updateSwapListToolbarToggles("diff");
     updateSwapListToolbarToggles("variant");
+    updateSortControl("swapClean");
+    updateSortControl("swapDiff");
+    updateSortControl("swapVariant");
   }
   function wireSwapRowEvents() {
     document.querySelectorAll("#swapResultView .row").forEach((details) => {
@@ -2109,7 +2293,9 @@
   function handleSwapCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");
     const tab = swapCleanIds.includes(id) ? "clean" : swapDiffIds.includes(id) ? "diff" : "variant";
-    const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+    const sortTab = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
+    const rawList = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+    const list = getSortedIds(rawList, swapRows, sortState[sortTab]);
     const index = list.indexOf(id);
     const newState = cb.checked;
     if (e.shiftKey && swapLastClickedIndex && swapLastClickedIndex.tab === tab) {

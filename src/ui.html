@@ -205,6 +205,39 @@
   .list-toolbar-icon-btn[disabled] { color: var(--text-faint); cursor: default; pointer-events: none; }
   .list-toolbar-icon-btn.push-right { margin-left: auto; }
 
+  /* ---- 並び替え（デフォルト/メインコンポーネント名/コンポーネントサイズ） ---- */
+  .sort-wrap { position: relative; flex: none; display: flex; align-items: center; gap: 6px; }
+  .sort-key-btn {
+    display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 6px; border-radius: 999px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--text); font-size: 10px;
+    font-weight: 600; cursor: pointer; max-width: 128px; flex: none;
+  }
+  .sort-key-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sort-key-btn svg.sort-icon { width: 10px; height: 10px; color: var(--text-faint); flex: none; }
+  .sort-key-btn svg.caret { width: 8px; height: 8px; color: var(--text-faint); flex: none; }
+  .sort-key-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+  .sort-dir-btn {
+    display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg); color: var(--text-muted); cursor: pointer; flex: none; padding: 0;
+  }
+  .sort-dir-btn svg { width: 11px; height: 11px; }
+  .sort-dir-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+  .sort-menu {
+    position: absolute; top: calc(100% + 4px); left: 0; width: 200px; background: var(--panel-bg);
+    border: 1px solid var(--panel-border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+    z-index: 20; overflow: hidden;
+  }
+  .sort-menu-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; font-size: 11px;
+    font-weight: 600; color: var(--text); cursor: pointer; border-bottom: 1px solid var(--divider); width: 100%;
+    background: none; border-left: none; border-right: none; border-top: none; text-align: left;
+  }
+  .sort-menu-item:last-child { border-bottom: none; }
+  .sort-menu-item:hover { background: var(--row-hover); }
+  .sort-menu-item.active { color: var(--accent-strong); background: var(--accent-bg); }
+  .sort-menu-item .check { width: 12px; height: 12px; color: var(--accent-strong); flex: none; }
+
   /* リスト下端・一括処理ボタンの直上に置く「すべてのインスタンスを選択」用。
      チェック済みインスタンスをFigmaキャンバス上で選択する機能で、プラグイン内
      チェックボックスの一括ON/OFF（上部の.list-toolbar）とは別物なので分けて配置する。 */
@@ -456,6 +489,11 @@
         <div class="tab-panel" data-panel="clean">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="cleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="cleanSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="cleanSortDirBtn"></button>
+              <div class="sort-menu hidden" id="cleanSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="cleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="cleanList"></div>
@@ -472,6 +510,11 @@
         <div class="tab-panel hidden" data-panel="diff">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="diffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="diffSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="diffSortDirBtn"></button>
+              <div class="sort-menu hidden" id="diffSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="diffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="diffList"></div>
@@ -566,6 +609,11 @@
         <div class="tab-panel" data-swappanel="clean">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="swapCleanSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="swapCleanSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="swapCleanSortDirBtn"></button>
+              <div class="sort-menu hidden" id="swapCleanSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="swapCleanExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapCleanList"></div>
@@ -582,6 +630,11 @@
         <div class="tab-panel hidden" data-swappanel="diff">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="swapDiffSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="swapDiffSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="swapDiffSortDirBtn"></button>
+              <div class="sort-menu hidden" id="swapDiffSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="swapDiffExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapDiffList"></div>
@@ -602,6 +655,11 @@
         <div class="tab-panel hidden" data-swappanel="variant">
           <div class="list-toolbar">
             <input type="checkbox" class="row-check" id="swapVariantSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
+            <div class="sort-wrap">
+              <button class="sort-key-btn" id="swapVariantSortKeyBtn"></button>
+              <button class="sort-dir-btn" id="swapVariantSortDirBtn"></button>
+              <div class="sort-menu hidden" id="swapVariantSortMenu"></div>
+            </div>
             <button class="list-toolbar-icon-btn push-right" id="swapVariantExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
           </div>
           <div class="row-list" id="swapVariantList"></div>
