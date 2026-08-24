@@ -1091,6 +1091,7 @@ interface LibraryScanData {
     variantProps: Record<string, string[]>;
     children: { key: string; variantProperties: Record<string, string> }[];
   }[];
+  skipped: { name: string; path: string; reason: string }[];
   coverThumbnail?: string; // data URL。無ければチップ表示は頭文字アバターにフォールバック
 }
 
@@ -1154,6 +1155,15 @@ function onLibraryScanDone(data: LibraryScanData, coverThumbnail?: Uint8Array): 
   lastLibraryScanJson = JSON.stringify(data, null, 2);
   $("scanLibJsonPreview").textContent = lastLibraryScanJson;
   showScanLib("result");
+  // Figma内部で「エラーあり」判定されたコンポーネントセット（バリアント重複等）は
+  // スキャン全体を止めずに個別スキップされる。件数を黙って減らすとAnalyticsの
+  // 公開コンポーネント数と食い違う原因になるため、スキップがあれば明示する。
+  if (data.skipped.length > 0) {
+    showToast(
+      `${data.skipped.length}件のコンポーネントをスキップしました（Figma側でエラーが検出されているため。詳細はJSONのskippedを参照）`,
+      6000
+    );
+  }
 }
 
 function copyToClipboard(text: string): Promise<void> {
@@ -2131,6 +2141,11 @@ window.onmessage = (event: MessageEvent) => {
       else renderTabs();
       if (!swapViews.busy.classList.contains("hidden")) showSwap("result");
       else renderSwapTabs();
+      // ライブラリスキャンは中断されると再開できず、キャンセルボタンも既に
+      // 終了したスキャンに対しては効かなくなる（code.ts側のループが例外で
+      // 止まっているため）。busyビューに留まり続けるフリーズ状態を防ぐため、
+      // やり直せるようintroビューへ戻す。
+      if (!scanLibViews.busy.classList.contains("hidden")) showScanLib("intro");
       break;
   }
 };

@@ -335,6 +335,7 @@
     libraryScanCancelled = false;
     const components = [];
     const componentSets = [];
+    const skipped = [];
     const BATCH_SIZE = 30;
     const pages = figma.root.children;
     const totalPages = pages.length;
@@ -381,24 +382,28 @@
         const statuses = await Promise.all(batch.map((node) => node.getPublishStatusAsync()));
         batch.forEach((node, idx) => {
           if (statuses[idx] === "UNPUBLISHED") return;
-          if (node.type === "COMPONENT_SET") {
-            const variantProps = {};
-            for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
-              variantProps[prop] = info.values;
+          try {
+            if (node.type === "COMPONENT_SET") {
+              const variantProps = {};
+              for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
+                variantProps[prop] = info.values;
+              }
+              componentSets.push({
+                name: node.name,
+                key: node.key,
+                path: nodePath(node),
+                variantProps,
+                children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
+                  var _a;
+                  return { key: c.key, variantProperties: (_a = c.variantProperties) != null ? _a : {} };
+                }),
+                defaultVariantKey: node.defaultVariant.key
+              });
+            } else if (node.type === "COMPONENT") {
+              components.push({ name: node.name, key: node.key, path: nodePath(node) });
             }
-            componentSets.push({
-              name: node.name,
-              key: node.key,
-              path: nodePath(node),
-              variantProps,
-              children: node.children.filter((c) => c.type === "COMPONENT").map((c) => {
-                var _a;
-                return { key: c.key, variantProperties: (_a = c.variantProperties) != null ? _a : {} };
-              }),
-              defaultVariantKey: node.defaultVariant.key
-            });
-          } else if (node.type === "COMPONENT") {
-            components.push({ name: node.name, key: node.key, path: nodePath(node) });
+          } catch (err) {
+            skipped.push({ name: node.name, path: nodePath(node), reason: String(err) });
           }
         });
         pageScanned += batch.length;
@@ -416,7 +421,8 @@
       libraryName: figma.root.name,
       exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
       components,
-      componentSets
+      componentSets,
+      skipped
     };
     let coverThumbnail;
     try {

@@ -548,6 +548,7 @@ interface LibraryScanData {
   exportedAt: string;
   components: LibraryComponentEntry[];
   componentSets: LibraryComponentSetEntry[];
+  skipped: { name: string; path: string; reason: string }[];
   coverThumbnail?: string; // data URL。ui.ts側でbytesから変換して埋め込む（§handleScanLibrary参照）
 }
 
@@ -568,6 +569,12 @@ async function handleScanLibrary(): Promise<void> {
   libraryScanCancelled = false;
   const components: LibraryComponentEntry[] = [];
   const componentSets: LibraryComponentSetEntry[] = [];
+  // Figma自体が内部検証エラー（バリアント重複など）を抱えていると判断した
+  // コンポーネントセットは、variantGroupProperties等へのアクセスで例外を
+  // 投げる。1件のノード単体の異常でスキャン全体を巻き込まないよう個別に
+  // スキップし、最終的にユーザーへその件数と理由を報告する（黙って件数が
+  // 減っているとAnalyticsの公開コンポーネント数と食い違う原因になるため）。
+  const skipped: { name: string; path: string; reason: string }[] = [];
 
   // Figmaには「このファイルにPublish済みコンポーネントが何件あるか」を事前に
   // 一発で返すAPIが無い（Web版Analyticsのような集計は取れない）ので、ファイル
@@ -655,23 +662,31 @@ async function handleScanLibrary(): Promise<void> {
         // 公開済み（CHANGEDは公開後にローカルで変更がある状態）なので対象に含める。
         if (statuses[idx] === "UNPUBLISHED") return;
 
-        if (node.type === "COMPONENT_SET") {
-          const variantProps: Record<string, string[]> = {};
-          for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
-            variantProps[prop] = info.values;
+        try {
+          if (node.type === "COMPONENT_SET") {
+            // variantGroupPropertiesは、そのコンポーネントセット自体がFigma内部の
+            // 検証エラーを抱えている（例:バリアントの重複等、Figma上で赤い警告が
+            // 出ている状態）場合に例外を投げる。1件のノード単体の異常でスキャン
+            // 全体を巻き込まないよう、ここだけ個別に握りつぶしてスキップする。
+            const variantProps: Record<string, string[]> = {};
+            for (const [prop, info] of Object.entries(node.variantGroupProperties)) {
+              variantProps[prop] = info.values;
+            }
+            componentSets.push({
+              name: node.name,
+              key: node.key,
+              path: nodePath(node),
+              variantProps,
+              children: node.children
+                .filter((c): c is ComponentNode => c.type === "COMPONENT")
+                .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
+              defaultVariantKey: node.defaultVariant.key,
+            });
+          } else if (node.type === "COMPONENT") {
+            components.push({ name: node.name, key: node.key, path: nodePath(node) });
           }
-          componentSets.push({
-            name: node.name,
-            key: node.key,
-            path: nodePath(node),
-            variantProps,
-            children: node.children
-              .filter((c): c is ComponentNode => c.type === "COMPONENT")
-              .map((c) => ({ key: c.key, variantProperties: c.variantProperties ?? {} })),
-            defaultVariantKey: node.defaultVariant.key,
-          });
-        } else if (node.type === "COMPONENT") {
-          components.push({ name: node.name, key: node.key, path: nodePath(node) });
+        } catch (err) {
+          skipped.push({ name: node.name, path: nodePath(node), reason: String(err) });
         }
       });
 
@@ -695,6 +710,7 @@ async function handleScanLibrary(): Promise<void> {
     exportedAt: new Date().toISOString(),
     components,
     componentSets,
+    skipped,
   };
 
   // このファイルに「ファイルのサムネイル」として明示的に指定されたノードが

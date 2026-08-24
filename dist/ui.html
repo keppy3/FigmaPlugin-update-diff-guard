@@ -1783,6 +1783,12 @@
     lastLibraryScanJson = JSON.stringify(data, null, 2);
     $("scanLibJsonPreview").textContent = lastLibraryScanJson;
     showScanLib("result");
+    if (data.skipped.length > 0) {
+      showToast(
+        `${data.skipped.length}\u4EF6\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u3092\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3057\u305F\uFF08Figma\u5074\u3067\u30A8\u30E9\u30FC\u304C\u691C\u51FA\u3055\u308C\u3066\u3044\u308B\u305F\u3081\u3002\u8A73\u7D30\u306FJSON\u306Eskipped\u3092\u53C2\u7167\uFF09`,
+        6e3
+      );
+    }
   }
   function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2601,6 +2607,7 @@
         else renderTabs();
         if (!swapViews.busy.classList.contains("hidden")) showSwap("result");
         else renderSwapTabs();
+        if (!scanLibViews.busy.classList.contains("hidden")) showScanLib("intro");
         break;
     }
   };
