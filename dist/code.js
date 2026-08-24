@@ -212,6 +212,7 @@
         index: i + 1,
         total: ids.length
       });
+      await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         const latest = await importComponentWithRetry(item.latestKey);
         item.instance.swapComponent(latest);
@@ -287,6 +288,7 @@
           total: ids.length
         });
       }
+      await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
       } catch (e) {

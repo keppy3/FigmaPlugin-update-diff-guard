@@ -372,6 +372,12 @@ async function handleApplyBulk(ids: string[], removeLatest?: boolean): Promise<v
       index: i + 1,
       total: ids.length,
     });
+    // importComponentWithRetryがキャッシュ済みキーに対してはマイクロタスクだけで
+    // 解決してしまうことがあり、その場合ループ全体が1つのマクロタスク内で完結して
+    // ブラウザに描画の機会を一度も与えず、プログレスバーが動いて見えない
+    // （最後の状態にしか見えない）実害があった。1件ごとに明示的にイベントループへ
+    // 制御を返し、進捗の各ステップが確実に1フレームは描画されるようにする。
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     try {
       const latest = await importComponentWithRetry(item.latestKey);
       item.instance.swapComponent(latest);
@@ -478,6 +484,8 @@ async function handlePlaceLatestBulk(ids: string[]): Promise<void> {
         total: ids.length,
       });
     }
+    // §handleApplyBulkと同じ理由でイベントループへ明示的に制御を返す。
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     try {
       if (await placeLatestOne(ids[i])) succeeded.push(ids[i]);
     } catch {
