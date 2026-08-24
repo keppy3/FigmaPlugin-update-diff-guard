@@ -420,6 +420,18 @@ async function placeLatestOne(id: string): Promise<boolean> {
   const originalIndex = parent.children.indexOf(inst);
   parent.insertChild(originalIndex + 1, wrapper);
 
+  // 親がAuto Layoutだと、挿入した瞬間にwrapperがそのままフローに乗ってしまい、
+  // 上で設定した手動x/yが上書きされて元インスタンスの脇に配置されてしまう。
+  // wrapperはinstの現在のwidth/heightをそのままコピーした固定サイズの箱
+  // （§上のresize呼び出し）でしかないので、フローから外してもFILL等のサイジング
+  // 計算には一切影響しない — 安全に手動配置へ戻せる。
+  const layoutParent = parent as unknown as { layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL" };
+  if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
+    wrapper.layoutPositioning = "ABSOLUTE";
+    wrapper.x = inst.x;
+    wrapper.y = inst.y;
+  }
+
   const clone = inst.clone();
   clone.swapComponent(latest);
   wrapper.appendChild(clone);

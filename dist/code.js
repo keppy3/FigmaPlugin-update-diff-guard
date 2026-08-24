@@ -246,6 +246,12 @@
     wrapper.setPluginData(ROLE_KEY, ROLE_VALUE);
     const originalIndex = parent.children.indexOf(inst);
     parent.insertChild(originalIndex + 1, wrapper);
+    const layoutParent = parent;
+    if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
+      wrapper.layoutPositioning = "ABSOLUTE";
+      wrapper.x = inst.x;
+      wrapper.y = inst.y;
+    }
     const clone = inst.clone();
     clone.swapComponent(latest);
     wrapper.appendChild(clone);

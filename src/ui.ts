@@ -58,9 +58,9 @@ const SORT_CHECK =
 
 /* ---- 並び替え ----
    5つのタブ（更新の見た目差分なし/あり、スワップの見た目差分なし/あり/
-   バリアント不一致）それぞれが独立したソート状態を持つ。スキャンのたびに
-   そのスキャンが影響するタブ群だけデフォルトへリセットする
-   （§onScanStarted/onSwapScanStarted参照）。 */
+   バリアント不一致）は1つのソート状態をタブ横断で共有する（どのタブで
+   変更しても他の全タブに即座に反映される）。スキャン開始時（更新/スワップ
+   どちらでも）にデフォルトへリセットする（§onScanStarted/onSwapScanStarted参照）。 */
 type SortKey = "default" | "mainComponentName" | "size";
 type SortDir = "asc" | "desc";
 interface SortState {
@@ -75,13 +75,7 @@ const SORT_KEY_LABELS: Record<SortKey, string> = {
 const SORT_KEYS: SortKey[] = ["default", "mainComponentName", "size"];
 
 type SortTab = "clean" | "diff" | "swapClean" | "swapDiff" | "swapVariant";
-const sortState: Record<SortTab, SortState> = {
-  clean: { key: "default", dir: "asc" },
-  diff: { key: "default", dir: "asc" },
-  swapClean: { key: "default", dir: "asc" },
-  swapDiff: { key: "default", dir: "asc" },
-  swapVariant: { key: "default", dir: "asc" },
-};
+const sortState: SortState = { key: "default", dir: "asc" };
 
 function compareRows(a: RowData, b: RowData, key: SortKey): number {
   if (key === "mainComponentName") return a.mainComponentName.localeCompare(b.mainComponentName, "ja");
@@ -346,6 +340,38 @@ document.querySelectorAll<HTMLButtonElement>(".mode-tab").forEach((btn) => {
   btn.addEventListener("click", () => selectMode(btn.dataset.mode as Mode));
 });
 
+/* ---- スキャン完了時のアラート音 ---- */
+// AudioContextはユーザー操作なしで生成/再生しようとするとブラウザの自動再生
+// ポリシーでブロックされる。スキャン開始ボタンのクリック（=ユーザー操作）の
+// タイミングで生成・resumeしておくことで、非同期に届くスキャン完了メッセージ
+// の時点では確実に再生できる状態にしておく。
+let audioCtx: AudioContext | null = null;
+
+function ensureAudioUnlocked(): void {
+  if (!audioCtx) audioCtx = new AudioContext();
+  else if (audioCtx.state === "suspended") void audioCtx.resume();
+}
+
+function playCompletionChime(): void {
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") void audioCtx.resume();
+  const ctx = audioCtx;
+  const now = ctx.currentTime;
+  [880, 1320].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const start = now + i * 0.12;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.2, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.22);
+  });
+}
+
 /* ---- image helpers ---- */
 function dataUrlFromBytes(bytes: Uint8Array): string {
   let binary = "";
@@ -457,6 +483,7 @@ $("radioGroup").addEventListener("change", (e) => {
 
 /* ---- スキャン開始 / キャンセル ---- */
 $("scanBtn").addEventListener("click", () => {
+  ensureAudioUnlocked();
   const checkedRadio = document.querySelector<HTMLInputElement>('input[name="scope"]:checked');
   post({ type: "scan", scope: checkedRadio ? checkedRadio.value : "selection" });
 });
@@ -474,8 +501,8 @@ function onScanStarted(total: number): void {
   Object.keys(checked).forEach((k) => delete checked[k]);
   Object.keys(latestVisible).forEach((k) => delete latestVisible[k]);
   Object.keys(expandedIds).forEach((k) => delete expandedIds[k]);
-  sortState.clean = { key: "default", dir: "asc" };
-  sortState.diff = { key: "default", dir: "asc" };
+  sortState.key = "default";
+  sortState.dir = "asc";
   scanning = true;
   scanTotal = total;
   scanDone = 0;
@@ -636,8 +663,8 @@ function renderTabs(justEnteredId?: string): void {
   $("cleanCount").textContent = `(${cleanIds.length})`;
   $("diffCount").textContent = `(${diffIds.length})`;
 
-  const sortedCleanIds = getSortedIds(cleanIds, rows, sortState.clean);
-  const sortedDiffIds = getSortedIds(diffIds, rows, sortState.diff);
+  const sortedCleanIds = getSortedIds(cleanIds, rows, sortState);
+  const sortedDiffIds = getSortedIds(diffIds, rows, sortState);
 
   let cleanHtml = sortedCleanIds.length
     ? sortedCleanIds.map((id) => cleanRowHtml(id, id === justEnteredId)).join("")
@@ -719,7 +746,7 @@ function handleCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   const tab: "clean" | "diff" = cleanIds.includes(id) ? "clean" : "diff";
   // Shift範囲選択は「今画面に表示されている順序」（並び替え適用後）で動く
   // 必要があるので、元配列ではなく現在の並び替え結果を使う。
-  const list = getSortedIds(tab === "clean" ? cleanIds : diffIds, rows, sortState[tab]);
+  const list = getSortedIds(tab === "clean" ? cleanIds : diffIds, rows, sortState);
   const index = list.indexOf(id);
   const newState = cb.checked; // click already toggled the native checkbox by the time this fires
 
@@ -784,13 +811,16 @@ function closeSortMenu(): void {
   openSortMenuTab = null;
 }
 
-function rerenderForSortTab(tab: SortTab): void {
-  if (tab === "clean" || tab === "diff") renderTabs();
-  else renderSwapTabs();
+// ソート状態は5タブで共有なので、どのタブで変更してもレンダリング対象になり
+// 得る両モードのリストを両方まとめて再描画する（それぞれの内部で5タブ分の
+// updateSortControlも呼ばれる）。
+function rerenderAllSortTabs(): void {
+  renderTabs();
+  renderSwapTabs();
 }
 
-function sortMenuItemHtml(tab: SortTab, key: SortKey): string {
-  const active = sortState[tab].key === key;
+function sortMenuItemHtml(key: SortKey): string {
+  const active = sortState.key === key;
   return `<button class="sort-menu-item${active ? " active" : ""}" data-sort-key="${key}">
     <span>${SORT_KEY_LABELS[key]}</span>
     ${active ? SORT_CHECK : ""}
@@ -799,13 +829,13 @@ function sortMenuItemHtml(tab: SortTab, key: SortKey): string {
 
 function openSortMenu(tab: SortTab): void {
   const menu = $(`${tab}SortMenu`);
-  menu.innerHTML = SORT_KEYS.map((key) => sortMenuItemHtml(tab, key)).join("");
+  menu.innerHTML = SORT_KEYS.map((key) => sortMenuItemHtml(key)).join("");
   menu.querySelectorAll<HTMLButtonElement>("[data-sort-key]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      sortState[tab].key = btn.getAttribute("data-sort-key") as SortKey;
+      sortState.key = btn.getAttribute("data-sort-key") as SortKey;
       closeSortMenu();
-      rerenderForSortTab(tab);
+      rerenderAllSortTabs();
     });
   });
   menu.classList.remove("hidden");
@@ -823,8 +853,8 @@ function bindSortControl(tab: SortTab): void {
     }
   });
   $(`${tab}SortDirBtn`).addEventListener("click", () => {
-    sortState[tab].dir = sortState[tab].dir === "asc" ? "desc" : "asc";
-    rerenderForSortTab(tab);
+    sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+    rerenderAllSortTabs();
   });
 }
 (["clean", "diff", "swapClean", "swapDiff", "swapVariant"] as SortTab[]).forEach(bindSortControl);
@@ -834,10 +864,10 @@ function updateSortControl(tab: SortTab): void {
   const keyBtn = $(`${tab}SortKeyBtn`);
   const caret =
     '<svg class="caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
-  keyBtn.innerHTML = `${SORT_ICON}<span>${SORT_KEY_LABELS[sortState[tab].key]}</span>${caret}`;
+  keyBtn.innerHTML = `${SORT_ICON}<span>${SORT_KEY_LABELS[sortState.key]}</span>${caret}`;
 
   const dirBtn = $(`${tab}SortDirBtn`) as HTMLButtonElement;
-  const isAsc = sortState[tab].dir === "asc";
+  const isAsc = sortState.dir === "asc";
   dirBtn.innerHTML = isAsc ? SORT_DIR_ASC : SORT_DIR_DESC;
   dirBtn.title = isAsc ? "降順に切り替え" : "昇順に切り替え";
 
@@ -1098,6 +1128,7 @@ interface LibraryScanData {
 let lastLibraryScanJson = "";
 
 $("scanLibStartBtn").addEventListener("click", () => {
+  ensureAudioUnlocked();
   showScanLib("busy");
   $("scanLibPageStep").textContent = "";
   $("scanLibCompStep").textContent = "";
@@ -1358,6 +1389,7 @@ function onSwapMappingCacheLoaded(raws: string[]): void {
 
 $("swapScanBtn").addEventListener("click", () => {
   if (addedLibraries.length === 0) return;
+  ensureAudioUnlocked();
   const checkedRadio = document.querySelector<HTMLInputElement>('input[name="swapscope"]:checked');
   post({
     type: "scan-swap",
@@ -1406,9 +1438,8 @@ function onSwapScanStarted(total: number): void {
   Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
   Object.keys(swapLatestVisible).forEach((k) => delete swapLatestVisible[k]);
   Object.keys(swapExpandedIds).forEach((k) => delete swapExpandedIds[k]);
-  sortState.swapClean = { key: "default", dir: "asc" };
-  sortState.swapDiff = { key: "default", dir: "asc" };
-  sortState.swapVariant = { key: "default", dir: "asc" };
+  sortState.key = "default";
+  sortState.dir = "asc";
   swapScanning = true;
   swapScanTotal = total;
   swapScanDone = 0;
@@ -1698,9 +1729,9 @@ function renderSwapTabs(justEnteredId?: string): void {
   $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
   $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
 
-  const sortedSwapCleanIds = getSortedIds(swapCleanIds, swapRows, sortState.swapClean);
-  const sortedSwapDiffIds = getSortedIds(swapDiffIds, swapRows, sortState.swapDiff);
-  const sortedSwapVariantIds = getSortedIds(swapVariantIds, swapRows, sortState.swapVariant);
+  const sortedSwapCleanIds = getSortedIds(swapCleanIds, swapRows, sortState);
+  const sortedSwapDiffIds = getSortedIds(swapDiffIds, swapRows, sortState);
+  const sortedSwapVariantIds = getSortedIds(swapVariantIds, swapRows, sortState);
 
   let swapCleanHtml = sortedSwapCleanIds.length
     ? sortedSwapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("")
@@ -1788,10 +1819,9 @@ function wireSwapRowEvents(): void {
 function handleSwapCheckboxClick(cb: HTMLInputElement, e: MouseEvent): void {
   const id = cb.getAttribute("data-id")!;
   const tab: "clean" | "diff" | "variant" = swapCleanIds.includes(id) ? "clean" : swapDiffIds.includes(id) ? "diff" : "variant";
-  const sortTab: SortTab = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
   const rawList = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
   // Shift範囲選択は表示中の並び替え結果に合わせる（§handleCheckboxClickと同じ理由）。
-  const list = getSortedIds(rawList, swapRows, sortState[sortTab]);
+  const list = getSortedIds(rawList, swapRows, sortState);
   const index = list.indexOf(id);
   const newState = cb.checked;
 
@@ -2034,6 +2064,7 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "scan-done":
       onScanFinished(false);
+      playCompletionChime();
       break;
     case "scan-cancelled":
       onScanFinished(true);
@@ -2076,6 +2107,7 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "library-scan-done":
       onLibraryScanDone(msg.data, msg.coverThumbnail);
+      playCompletionChime();
       break;
     case "library-scan-cancelled":
       onLibraryScanCancelled();
@@ -2097,6 +2129,7 @@ window.onmessage = (event: MessageEvent) => {
       break;
     case "swap-scan-done":
       onSwapScanFinished(false);
+      playCompletionChime();
       break;
     case "swap-scan-cancelled":
       onSwapScanFinished(true);
