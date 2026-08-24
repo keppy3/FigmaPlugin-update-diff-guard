@@ -460,7 +460,7 @@
       <div class="setup" id="setupView">
         <div class="tips-box">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
-          <div class="tips-body">ライブラリ更新が発生しているインスタンスを検出し、それらの更新前と更新後を画像比較します。差分あり／なしで振り分けます。</div>
+          <div class="tips-body">ライブラリ更新が発生しているインスタンスを検出し、更新前後の見た目を画像比較して差分あり／なしに振り分けます。</div>
         </div>
         <div class="setup-label">スキャン範囲</div>
         <div class="radio-group" id="radioGroup">
@@ -559,7 +559,7 @@
         <div class="tips-box">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
           <div class="tips-body">
-            <div>スワップ先ライブラリのスキャン情報を登録し、その中のコンポーネントと同じ名前のインスタンスを検出してスワップ前とスワップ後で画像比較します。差分あり／なしで振り分けます。</div>
+            <div>スワップ先ライブラリのスキャン情報を登録すると、同じ名前のコンポーネントを持つインスタンスを自動検出します。スワップ前後の見た目を画像比較し、差分あり／なしに振り分けます。</div>
             <div>
               <div class="tips-steps-head">―ライブラリスワップの手順―</div>
               <ul class="tips-steps">
@@ -698,7 +698,7 @@
         <div class="tips-box">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
           <div class="tips-body">
-            <div>このファイル内の全ページのコンポーネントをスキャンし、公開されているコンポーネントを見つけてライブラリ情報を作成します。<br>このライブラリ情報はこのプラグインでライブラリスワップをする際に必要になります。</div>
+            <div>このファイル内の全ページをスキャンし、公開されているコンポーネントからライブラリ情報を作成します。<br>このライブラリ情報は、ライブラリスワップの際に必要になります。</div>
             <div style="color: var(--text-muted);">※ Figmaプラグインは外部ライブラリから公開コンポーネントの情報を得ることができないため、この工程が必要となってしまいます😔</div>
           </div>
         </div>
