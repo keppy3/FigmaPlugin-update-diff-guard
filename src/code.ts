@@ -766,16 +766,14 @@ async function handleScanLibrary(): Promise<void> {
 // セットの場合はプロパティの組み合わせ一致）だけで解決する。実機確認の結果、
 // Figma純正のライブラリスワップはセット名が一致してバリアントの組み合わせが
 // 見つからない場合、そのセットの「デフォルトバリアント」へ差し替えることが
-// わかった。ここでも同じ考え方に寄せ、一致しないものを一律「迷子」にはせず、
-// デフォルトバリアントを暫定の差し替え先として提示する（variantFallback:
-// true）。ただし自動選択である以上、必ず見た目差分あり同様のプレビュー確認を
-// 経てから明示的に実行してもらう（§ui.ts バリアント不一致タブ参照）。
-// 完全に名前が一致しない場合のみ、一切書き換えず「迷子」として除外する。
+// わかった。ここでも同じ考え方に寄せ、デフォルトバリアントを差し替え先として
+// 解決する。以前はこれを別扱い（バリアント不一致タブでの個別確認）にしていたが、
+// Figma純正のスワップと同様に問答無用でデフォルトバリアントへ差し替えて良い
+// と判断した — 見た目が変わっていれば通常の見た目差分ありタブに自然に振り
+// 分けられるので、それで確認の役目は十分に果たせる。完全に名前が一致しない
+// 場合のみ、一切書き換えず「迷子」として除外する。
 
-type SwapMatchResult =
-  | { key: string }
-  | { key: string; variantFallback: true }
-  | { reason: string; category: "name" | "variant" };
+type SwapMatchResult = { key: string } | { reason: string; category: "name" | "variant" };
 
 function variantPropsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
   const aKeys = Object.keys(a);
@@ -802,7 +800,7 @@ function resolveSwapTarget(
       // 古いキャッシュ済みJSON（defaultVariantKeyが無い版でスキャンした対応表）
       // との後方互換として、無ければ従来通り「迷子」に落とす。
       if (set.defaultVariantKey) {
-        return { key: set.defaultVariantKey, variantFallback: true };
+        return { key: set.defaultVariantKey };
       }
       const desc = Object.entries(current)
         .map(([k, v]) => `${k}=${v}`)
@@ -916,8 +914,7 @@ async function handleScanSwap(scope: ScopeMode, mappings: LibraryScanData[]): Pr
       if (swapScanCancelled) break;
 
       store.set(inst.id, { instance: inst, latestKey: result.key, source: "swap" });
-      const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
-      await computeAndSendDiff(inst, target, resultType, matchName);
+      await computeAndSendDiff(inst, target, "swap-scan-item-result", matchName);
     } catch {
       store.delete(inst.id);
       await postSwapExcluded(inst, "比較中にエラーが発生しました（編集された可能性があります）", "other");

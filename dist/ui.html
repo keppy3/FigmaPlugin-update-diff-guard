@@ -273,12 +273,6 @@
   .row-detail { padding: 0 14px 14px 37px; display: flex; flex-direction: column; gap: 10px; }
   .preview-row { display: flex; align-items: flex-start; gap: 10px; }
 
-  /* バリアント不一致タブ: デフォルトバリアントへ自動フォールバックしている旨の注記 */
-  .variant-note {
-    font-size: 10px; color: var(--warning-strong); background: var(--warning-bg);
-    border-radius: 6px; padding: 6px 9px; line-height: 1.5;
-  }
-
   .thumb-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: none; }
   .preview-frame { width: 120px; height: 68px; border-radius: 7px; border: 1px solid var(--panel-border); background: var(--row-hover); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .preview-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -404,6 +398,22 @@
   }
   .collision-note svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
 
+  /* ---- Tips欄（各機能のスキャン開始前に、その機能の概要を説明する） ---- */
+  .tips-box {
+    display: flex; gap: 8px; padding: 10px 12px; border-radius: 10px;
+    background: var(--accent-bg); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    font-size: 11px; line-height: 1.7; color: var(--text);
+  }
+  .tips-box svg { flex: none; width: 15px; height: 15px; color: var(--accent-strong); margin-top: 2px; }
+  .tips-box .tips-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .tips-steps-head { font-weight: 700; text-align: center; }
+  .tips-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  .tips-steps li { display: flex; gap: 6px; }
+  .tips-steps .step-num {
+    flex: none; width: 15px; height: 15px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px;
+  }
+
   /* ---- 名前不一致タブ（内部では「迷子(stray)」と呼んでいる）---- */
   .stray-group-head {
     padding: 9px 14px 5px; font-size: 10.5px; font-weight: 700; color: var(--text-muted);
@@ -448,7 +458,10 @@
 
       <!-- ① スキャン前画面 -->
       <div class="setup" id="setupView">
-        <div class="setup-intro">ライブラリの更新があるインスタンスを検出します。スキャンする範囲を選んでください。</div>
+        <div class="tips-box">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+          <div class="tips-body">ライブラリ更新が発生しているインスタンスを検出し、それらの更新前と更新後を画像比較。差分あり／なしで振り分ける。</div>
+        </div>
         <div class="setup-label">スキャン範囲</div>
         <div class="radio-group" id="radioGroup">
           <label class="radio-option active" data-scope="selection">
@@ -465,7 +478,6 @@
           </label>
         </div>
         <button class="btn-big" id="scanBtn">更新対象をスキャン</button>
-        <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
       </div>
 
       <!-- 一括「更新」／一括「比較用インスタンスを配置」／一括「このまま更新」実行時のみのビジー画面 -->
@@ -544,9 +556,23 @@
 
     <div class="mode-pane hidden" id="swapApplyModePane">
       <div class="setup" id="swapPasteView">
+        <div class="tips-box">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+          <div class="tips-body">
+            <div>スワップ先ライブラリのスキャン情報を登録し、その中のコンポーネントと同じ名前のインスタンスを検出してスワップ前とスワップ後で画像比較。差分あり／なしで振り分ける。</div>
+            <div>
+              <div class="tips-steps-head">―ライブラリスワップの手順―</div>
+              <ul class="tips-steps">
+                <li><span class="step-num">1</span><span>スワップ先ライブラリで当プラグインを起動し、「🔍️ライブラリスキャン」でライブラリ情報を取得</span></li>
+                <li><span class="step-num">2</span><span>このファイルに戻り、「ライブラリ情報」にスキャン情報をペースト（ライブラリは複数登録可能）</span></li>
+                <li><span class="step-num">3</span><span>スキャン範囲を選択してスワップ対象のスキャン開始</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div class="field-head">
-          <span class="setup-label">スワップ先ライブラリの公開コンポーネントリスト</span>
-          <button class="info-btn" id="swapPasteInfoBtn" aria-label="スワップ先ライブラリの公開コンポーネントリストについて">i</button>
+          <span class="setup-label">ライブラリ情報</span>
         </div>
 
         <div class="library-chip-list" id="swapLibraryChipList"></div>
@@ -554,7 +580,7 @@
         <button class="add-library-btn" id="swapAddLibraryBtn">＋ ライブラリを追加</button>
 
         <div class="hidden" id="swapAddLibraryForm" style="display: flex; flex-direction: column; gap: 8px;">
-          <textarea class="paste-area" id="swapAddLibraryTextarea" spellcheck="false" placeholder="ライブラリスキャンでコピーした公開リストを貼り付け"></textarea>
+          <textarea class="paste-area" id="swapAddLibraryTextarea" spellcheck="false" placeholder="ライブラリスキャンでコピーしたライブラリ情報を貼り付け"></textarea>
           <div class="paste-status" id="swapAddLibraryStatus"></div>
           <div style="display: flex; gap: 8px;">
             <button class="ghost-btn" id="swapAddLibraryCancel" style="flex: 1; justify-content: center;">キャンセル</button>
@@ -583,7 +609,6 @@
           </label>
         </div>
         <button class="btn-big" id="swapScanBtn" disabled>スワップ対象をスキャン</button>
-        <div class="setup-footnote">対象数が多いとスキャンに時間がかかることがあります。見つかり次第、順次リストに表示します</div>
       </div>
 
       <!-- 一括「スワップ」／一括「比較用インスタンスを配置」／一括「このままスワップ」実行時のみのビジー画面 -->
@@ -609,7 +634,6 @@
         <div class="tabs">
           <button class="tab active" data-swaptab="clean">👍️ 見た目差分なし <span class="tab-count" id="swapCleanCount">(0)</span></button>
           <button class="tab" data-swaptab="diff">⚠️ 見た目差分あり <span class="tab-count" id="swapDiffCount">(0)</span></button>
-          <button class="tab" data-swaptab="variant">⚠️バリアント不一致 <span class="tab-count" id="swapVariantCount">(0)</span></button>
           <button class="tab" data-swaptab="stray">名前不一致 <span class="tab-count" id="swapStrayCount">(0)</span></button>
         </div>
 
@@ -659,31 +683,6 @@
           </div>
         </div>
 
-        <div class="tab-panel hidden" data-swappanel="variant">
-          <div class="list-toolbar">
-            <input type="checkbox" class="row-check" id="swapVariantSelectAllToggle" aria-label="すべて選択/解除" title="すべて選択/解除">
-            <div class="sort-wrap">
-              <button class="sort-key-btn" id="swapVariantSortKeyBtn"></button>
-              <button class="sort-dir-btn" id="swapVariantSortDirBtn"></button>
-              <div class="sort-menu hidden" id="swapVariantSortMenu"></div>
-            </div>
-            <button class="list-toolbar-icon-btn push-right" id="swapVariantExpandToggle" aria-label="すべて展開/折りたたむ" title="すべて展開"></button>
-          </div>
-          <div class="row-list" id="swapVariantList"></div>
-          <div class="list-toolbar list-toolbar-bottom">
-            <button class="list-toolbar-link" id="swapVariantSelectCanvas">すべてのインスタンスを選択(0)</button>
-          </div>
-          <div class="tab-footer">
-            <div class="tab-footer-actions">
-              <button class="btn-big" id="swapVariantForceBulkBtn"><span id="swapVariantForceBulkBtnLabel">このまま一括スワップ(0)</span></button>
-              <div class="btn-pair">
-                <button class="btn-big outline-warning" id="swapVariantPlaceBulkBtn"><span id="swapVariantPlaceBulkBtnLabel">比較用インスタンスを一括配置(0)</span></button>
-                <button class="btn-big outline-danger" id="swapVariantClearAllBtn"><span id="swapVariantClearAllBtnLabel">比較用インスタンスをすべて削除</span></button>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div class="tab-panel hidden" data-swappanel="stray">
           <div class="row-list" id="swapStrayList"></div>
           <div class="annotation-note">
@@ -696,8 +695,14 @@
 
     <div class="mode-pane hidden" id="swapScanModePane">
       <div class="setup" id="scanLibIntroView">
-        <div class="setup-intro">このファイル内のコンポーネント／コンポーネントセットをすべて走査し、名前・キー・バリアント構成をまとめた<b>スワップ先ライブラリの公開コンポーネントリスト</b>を作成します。<br><br>このファイルが<b>スワップ先の新しいライブラリ</b>であることを確認してください。</div>
-        <button class="btn-big" id="scanLibStartBtn">公開コンポーネントリストを作成</button>
+        <div class="tips-box">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+          <div class="tips-body">
+            <div>このファイル内の全ページのコンポーネントをスキャンし、公開されているコンポーネントを見つけてライブラリ情報を作成します。<br>このライブラリ情報はこのプラグインでライブラリスワップをする際に必要になります。</div>
+            <div style="color: var(--text-muted);">※ Figmaプラグインは外部ライブラリから公開コンポーネントの情報を得ることができないため、この工程が必要となってしまいます😔</div>
+          </div>
+        </div>
+        <button class="btn-big" id="scanLibStartBtn">公開コンポーネントをスキャン</button>
       </div>
 
       <div class="busy hidden" id="scanLibBusyView">
@@ -722,9 +727,9 @@
         <div class="stat-summary">
           <div class="stat-box"><span class="num" id="scanLibComponentCount">0</span><span class="label">コンポーネント</span></div>
         </div>
-        <div class="setup-label">スワップ先ライブラリの公開コンポーネントリストの内容</div>
+        <div class="setup-label">ライブラリ情報の内容</div>
         <div class="json-preview" id="scanLibJsonPreview"></div>
-        <button class="btn-big" id="scanLibCopyBtn">スワップ先ライブラリの公開コンポーネントリストをコピー</button>
+        <button class="btn-big" id="scanLibCopyBtn">ライブラリ情報をコピー</button>
         <div class="setup-footnote">このリストを、スワップ対象の遷移図ファイル側の「ライブラリスワップ」に貼り付けてください</div>
       </div>
     </div>
@@ -752,14 +757,6 @@
         <button class="ghost-btn" id="clearMarkersConfirmCancel">キャンセル</button>
         <button class="btn-big outline-danger" id="clearMarkersConfirmOk">削除</button>
       </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay hidden" id="swapPasteInfoOverlay">
-    <div class="modal-box">
-      <div class="modal-title">スワップ先ライブラリの公開コンポーネントリストとは</div>
-      <div class="modal-body">スワップを実行するには、事前にライブラリファイル側でライブラリスキャンを実行し、スワップ先ライブラリの公開コンポーネントリスト（JSON）を取得する必要があります。<br><br>スワップ先ライブラリの公開コンポーネントリストを取得したら、このテキストエリアに貼り付けてください。</div>
-      <div class="modal-actions"><button class="ghost-btn" id="swapPasteInfoClose">閉じる</button></div>
     </div>
   </div>
 
@@ -1036,7 +1033,6 @@
   var swapRows = /* @__PURE__ */ new Map();
   var swapCleanIds = [];
   var swapDiffIds = [];
-  var swapVariantIds = [];
   var swapExcluded = [];
   var SWAP_EXCLUDED_GROUP_ID = "__swap_excluded__";
   var swapStrayGroups = /* @__PURE__ */ new Map();
@@ -1621,7 +1617,7 @@
       rerenderAllSortTabs();
     });
   }
-  ["clean", "diff", "swapClean", "swapDiff", "swapVariant"].forEach(bindSortControl);
+  ["clean", "diff", "swapClean", "swapDiff"].forEach(bindSortControl);
   document.addEventListener("click", () => closeSortMenu());
   function updateSortControl(tab) {
     const keyBtn = $(`${tab}SortKeyBtn`);
@@ -1634,7 +1630,7 @@
     if (openSortMenuTab === tab) openSortMenu(tab);
   }
   function setSortControlsEnabled(enabled) {
-    ["clean", "diff", "swapClean", "swapDiff", "swapVariant"].forEach((tab) => {
+    ["clean", "diff", "swapClean", "swapDiff"].forEach((tab) => {
       $(`${tab}SortKeyBtn`).disabled = !enabled;
       $(`${tab}SortDirBtn`).disabled = !enabled;
     });
@@ -1894,11 +1890,6 @@
       }
     });
   });
-  $("swapPasteInfoBtn").addEventListener("click", () => $("swapPasteInfoOverlay").classList.remove("hidden"));
-  $("swapPasteInfoClose").addEventListener("click", () => $("swapPasteInfoOverlay").classList.add("hidden"));
-  $("swapPasteInfoOverlay").addEventListener("click", (e) => {
-    if (e.target === $("swapPasteInfoOverlay")) $("swapPasteInfoOverlay").classList.add("hidden");
-  });
   $("swapRadioGroup").addEventListener("change", (e) => {
     const target = e.target;
     if (target.name !== "swapscope") return;
@@ -2041,7 +2032,6 @@
     swapRows.clear();
     swapCleanIds = [];
     swapDiffIds = [];
-    swapVariantIds = [];
     swapExcluded = [];
     swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
@@ -2058,7 +2048,6 @@
     swapRows.clear();
     swapCleanIds = [];
     swapDiffIds = [];
-    swapVariantIds = [];
     swapExcluded = [];
     swapStrayGroups.clear();
     Object.keys(swapChecked).forEach((k) => delete swapChecked[k]);
@@ -2125,27 +2114,6 @@
     appendSwapResultRow(row.status === "clean" ? "clean" : "diff", row.id);
     updateSwapFooterButtons();
     updateSwapListToolbarToggles(row.status === "clean" ? "clean" : "diff");
-  }
-  async function onSwapScanItemVariantResult(msg) {
-    const row = await processDiff(msg);
-    swapRows.set(
-      row.id,
-      row.status === "clean" ? {
-        id: row.id,
-        name: row.name,
-        status: "diff",
-        mainComponentName: row.mainComponentName,
-        area: row.area,
-        diffPercent: 0,
-        currentUrl: row.imageUrl,
-        latestUrl: row.imageUrl
-      } : row
-    );
-    swapVariantIds.push(row.id);
-    swapChecked[row.id] = true;
-    swapScanDone++;
-    updateSwapScanProgress();
-    renderSwapTabs(row.id);
   }
   function onSwapScanFinished(cancelled) {
     swapScanning = false;
@@ -2236,31 +2204,6 @@
     </div>
   </details>`;
   }
-  function swapVariantRowHtml(id, justEntered) {
-    var _a;
-    const row = swapRows.get(id);
-    if (!row) return "";
-    const latestLabel = row.sizeMismatch ? "\u30C7\u30D5\u30A9\u30EB\u30C8\u30D0\u30EA\u30A2\u30F3\u30C8\uFF08\u30B5\u30A4\u30BA\u4E0D\u4E00\u81F4\uFF09" : `\u30C7\u30D5\u30A9\u30EB\u30C8\u30D0\u30EA\u30A2\u30F3\u30C8\uFF08\u5DEE\u5206${((_a = row.diffPercent) != null ? _a : 0).toFixed(1)}%\uFF09`;
-    const checkbox = `<input type="checkbox" class="row-check" data-id="${id}" ${swapChecked[id] ? "checked" : ""}>`;
-    const miniThumb = `<img class="row-mini-thumb" src="${row.currentUrl || ""}" alt="">`;
-    return `<details class="row${justEntered ? " enter" : ""}" data-id="${id}" ${swapExpandedIds[id] ? "open" : ""}>
-    <summary class="row-summary">
-      ${checkbox}
-      ${miniThumb}
-      <span class="row-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
-      <span class="row-trailing">${CHEVRON_SVG}</span>
-    </summary>
-    <div class="row-detail">
-      <div class="variant-note">\u3053\u306E\u30B3\u30F3\u30DD\u30FC\u30CD\u30F3\u30C8\u30BB\u30C3\u30C8\u306E\u65E2\u5B9A\u30D0\u30EA\u30A2\u30F3\u30C8\u306B\u5DEE\u3057\u66FF\u3048\u307E\u3059\u3002\u898B\u305F\u76EE\u3092\u78BA\u8A8D\u3057\u3066\u304B\u3089\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002</div>
-      <div class="preview-row">
-        <div class="thumb-col"><div class="preview-frame"><img src="${row.currentUrl || ""}" alt=""></div><span class="thumb-label">Current</span></div>
-        <div class="thumb-col"><div class="preview-frame"><img src="${row.latestUrl || ""}" alt=""></div><span class="thumb-label">${latestLabel}</span></div>
-        <div class="side-col">${jumpBtnHtml(id)}</div>
-      </div>
-      ${swapDiffRowButtons(id)}
-    </div>
-  </details>`;
-  }
   function swapStrayRowHtml(key, group) {
     const thumb = group.thumbnailUrl ? `<img src="${group.thumbnailUrl}" alt="">` : "";
     const nameHtml = `<div class="row-name" title="${escapeHtml(group.name)}">${escapeHtml(group.name)}${group.items.length > 1 ? ` <span class="stray-count">\xD7${group.items.length}</span>` : ""}</div>`;
@@ -2305,31 +2248,25 @@
   function swapEmptyState(kind) {
     if (swapScanning) return '<div class="empty-state"><span class="spinner sm"></span>\u78BA\u8A8D\u4E2D\u2026</div>';
     if (kind === "clean") return '<div class="empty-state">\u898B\u305F\u76EE\u5DEE\u5206\u306A\u3057\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
-    if (kind === "diff") return '<div class="empty-state">\u898B\u305F\u76EE\u5DEE\u5206\u3042\u308A\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
-    return '<div class="empty-state">\u30D0\u30EA\u30A2\u30F3\u30C8\u4E0D\u4E00\u81F4\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
+    return '<div class="empty-state">\u898B\u305F\u76EE\u5DEE\u5206\u3042\u308A\u306E\u9805\u76EE\u306F\u3042\u308A\u307E\u305B\u3093</div>';
   }
   function renderSwapTabs(justEnteredId) {
     $("swapCleanCount").textContent = `(${swapCleanIds.length})`;
     $("swapDiffCount").textContent = `(${swapDiffIds.length})`;
-    $("swapVariantCount").textContent = `(${swapVariantIds.length})`;
     $("swapStrayCount").textContent = `(${Array.from(swapStrayGroups.values()).reduce((sum, g) => sum + g.items.length, 0)})`;
     const sortedSwapCleanIds = getSortedIds(swapCleanIds, swapRows, sortState);
     const sortedSwapDiffIds = getSortedIds(swapDiffIds, swapRows, sortState);
-    const sortedSwapVariantIds = getSortedIds(swapVariantIds, swapRows, sortState);
     let swapCleanHtml = sortedSwapCleanIds.length ? sortedSwapCleanIds.map((id) => swapCleanRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("clean");
     if (swapExcluded.length || swapScanning) swapCleanHtml += swapExcludedGroupHtml();
     $("swapCleanList").innerHTML = swapCleanHtml;
     $("swapDiffList").innerHTML = sortedSwapDiffIds.length ? sortedSwapDiffIds.map((id) => swapDiffRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("diff");
-    $("swapVariantList").innerHTML = sortedSwapVariantIds.length ? sortedSwapVariantIds.map((id) => swapVariantRowHtml(id, id === justEnteredId)).join("") : swapEmptyState("variant");
     renderSwapStray();
     wireSwapRowEvents();
     updateSwapFooterButtons();
     updateSwapListToolbarToggles("clean");
     updateSwapListToolbarToggles("diff");
-    updateSwapListToolbarToggles("variant");
     updateSortControl("swapClean");
     updateSortControl("swapDiff");
-    updateSortControl("swapVariant");
   }
   function wireSwapRow(row) {
     if (row instanceof HTMLDetailsElement) {
@@ -2405,8 +2342,8 @@
   }
   function handleSwapCheckboxClick(cb, e) {
     const id = cb.getAttribute("data-id");
-    const tab = swapCleanIds.includes(id) ? "clean" : swapDiffIds.includes(id) ? "diff" : "variant";
-    const rawList = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
+    const tab = swapCleanIds.includes(id) ? "clean" : "diff";
+    const rawList = tab === "clean" ? swapCleanIds : swapDiffIds;
     const list = getSortedIds(rawList, swapRows, sortState);
     const index = list.indexOf(id);
     const newState = cb.checked;
@@ -2423,8 +2360,8 @@
     swapLastClickedIndex = { tab, index };
   }
   function bindSwapListToolbar(tab) {
-    const list = tab === "clean" ? () => swapCleanIds : tab === "diff" ? () => swapDiffIds : () => swapVariantIds;
-    const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
+    const list = tab === "clean" ? () => swapCleanIds : () => swapDiffIds;
+    const prefix = tab === "clean" ? "swapClean" : "swapDiff";
     $(`${prefix}SelectAllToggle`).addEventListener("click", () => {
       const newState = $(`${prefix}SelectAllToggle`).checked;
       list().forEach((id) => swapChecked[id] = newState);
@@ -2439,10 +2376,9 @@
   }
   bindSwapListToolbar("clean");
   bindSwapListToolbar("diff");
-  bindSwapListToolbar("variant");
   function updateSwapListToolbarToggles(tab) {
-    const list = tab === "clean" ? swapCleanIds : tab === "diff" ? swapDiffIds : swapVariantIds;
-    const prefix = tab === "clean" ? "swapClean" : tab === "diff" ? "swapDiff" : "swapVariant";
+    const list = tab === "clean" ? swapCleanIds : swapDiffIds;
+    const prefix = tab === "clean" ? "swapClean" : "swapDiff";
     const checkedCount = list.filter((id) => swapChecked[id]).length;
     const selectToggle = $(`${prefix}SelectAllToggle`);
     selectToggle.checked = list.length > 0 && checkedCount === list.length;
@@ -2471,17 +2407,6 @@
     $("swapCleanSelectCanvas").disabled = cleanChecked === 0;
     $("swapDiffSelectCanvas").textContent = `\u3059\u3079\u3066\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u9078\u629E(${forceChecked})`;
     $("swapDiffSelectCanvas").disabled = forceChecked === 0;
-    const variantChecked = swapVariantIds.filter((id) => swapChecked[id]).length;
-    $("swapVariantForceBulkBtnLabel").textContent = `\u3053\u306E\u307E\u307E\u4E00\u62EC\u30B9\u30EF\u30C3\u30D7(${variantChecked})`;
-    $("swapVariantForceBulkBtn").disabled = variantChecked === 0;
-    const variantPlaceableChecked = swapVariantIds.filter(
-      (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
-    ).length;
-    $("swapVariantPlaceBulkBtnLabel").textContent = `\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u4E00\u62EC\u914D\u7F6E(${variantPlaceableChecked})`;
-    $("swapVariantPlaceBulkBtn").disabled = variantPlaceableChecked === 0;
-    $("swapVariantClearAllBtnLabel").textContent = "\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664";
-    $("swapVariantSelectCanvas").textContent = `\u3059\u3079\u3066\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u9078\u629E(${variantChecked})`;
-    $("swapVariantSelectCanvas").disabled = variantChecked === 0;
   }
   function showSwapBulkBusy(label) {
     showSwap("busy");
@@ -2528,31 +2453,9 @@
     if (targets.length === 0) return;
     post({ type: "select-on-canvas", ids: targets });
   });
-  $("swapVariantForceBulkBtn").addEventListener("click", () => {
-    const targets = swapVariantIds.filter((id) => swapChecked[id]);
-    if (targets.length === 0) return;
-    openForceConfirm({ kind: "bulk", ids: targets, mode: "swap" });
-  });
-  $("swapVariantPlaceBulkBtn").addEventListener("click", () => {
-    const targets = swapVariantIds.filter(
-      (id) => swapChecked[id] && !Object.prototype.hasOwnProperty.call(swapLatestVisible, id)
-    );
-    if (targets.length === 0) return;
-    showSwapBulkBusy("\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u914D\u7F6E\u3057\u3066\u3044\u307E\u3059");
-    post({ type: "place-latest-bulk", ids: targets });
-  });
-  $("swapVariantClearAllBtn").addEventListener("click", () => {
-    post({ type: "count-markers" });
-  });
-  $("swapVariantSelectCanvas").addEventListener("click", () => {
-    const targets = swapVariantIds.filter((id) => swapChecked[id]);
-    if (targets.length === 0) return;
-    post({ type: "select-on-canvas", ids: targets });
-  });
   function removeSwapResolvedId(id) {
     swapCleanIds = swapCleanIds.filter((x) => x !== id);
     swapDiffIds = swapDiffIds.filter((x) => x !== id);
-    swapVariantIds = swapVariantIds.filter((x) => x !== id);
     swapRows.delete(id);
     delete swapChecked[id];
     delete swapLatestVisible[id];
@@ -2672,9 +2575,6 @@
         break;
       case "swap-scan-item-result":
         void onSwapScanItemResult(msg);
-        break;
-      case "swap-scan-item-variant-result":
-        void onSwapScanItemVariantResult(msg);
         break;
       case "swap-scan-done":
         onSwapScanFinished(false);

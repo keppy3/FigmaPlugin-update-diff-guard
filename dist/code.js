@@ -449,7 +449,7 @@
       const child = set.children.find((c) => variantPropsEqual(c.variantProperties, current));
       if (!child) {
         if (set.defaultVariantKey) {
-          return { key: set.defaultVariantKey, variantFallback: true };
+          return { key: set.defaultVariantKey };
         }
         const desc = Object.entries(current).map(([k, v]) => `${k}=${v}`).join(", ");
         return {
@@ -528,8 +528,7 @@
         }
         if (swapScanCancelled) break;
         store.set(inst.id, { instance: inst, latestKey: result.key, source: "swap" });
-        const resultType = "variantFallback" in result ? "swap-scan-item-variant-result" : "swap-scan-item-result";
-        await computeAndSendDiff(inst, target, resultType, matchName);
+        await computeAndSendDiff(inst, target, "swap-scan-item-result", matchName);
       } catch (e) {
         store.delete(inst.id);
         await postSwapExcluded(inst, "\u6BD4\u8F03\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F\uFF08\u7DE8\u96C6\u3055\u308C\u305F\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\uFF09", "other");
