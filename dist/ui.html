@@ -400,18 +400,18 @@
 
   /* ---- Tips欄（各機能のスキャン開始前に、その機能の概要を説明する） ---- */
   .tips-box {
-    display: flex; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-top: 40px;
-    background: var(--accent-bg); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    display: flex; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-top: 30px;
+    background: var(--chrome-bg); border: 1px solid var(--panel-border);
     font-size: 11px; line-height: 1.7; color: var(--text);
   }
-  .tips-box svg { flex: none; width: 15px; height: 15px; color: var(--accent-strong); margin-top: 2px; }
+  .tips-box svg { flex: none; width: 15px; height: 15px; color: var(--text-muted); margin-top: 2px; }
   .tips-box .tips-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .tips-steps-head { color: var(--text-muted); }
   .tips-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
   .tips-steps li { display: flex; gap: 6px; }
   .tips-steps .step-num {
-    flex: none; width: 15px; height: 15px; border-radius: 50%; background: var(--accent);
-    color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px;
+    flex: none; width: 15px; height: 15px; border-radius: 50%; background: var(--text-faint);
+    color: var(--panel-bg); font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px;
   }
 
   /* ---- 名前不一致タブ（内部では「迷子(stray)」と呼んでいる）---- */
