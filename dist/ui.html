@@ -961,12 +961,12 @@
     updateModeTabsDisabledState();
   }
   var toastTimer;
-  function showToast(msg) {
+  function showToast(msg, durationMs = 2600) {
     const toast = $("toast");
     toast.textContent = msg;
     toast.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2600);
+    toastTimer = window.setTimeout(() => toast.classList.remove("show"), durationMs);
   }
   function resetToSetup() {
     rows.clear();
@@ -2410,7 +2410,11 @@
         onSwapMappingCacheLoaded(msg.raws);
         break;
       case "error":
-        showToast(`\u30A8\u30E9\u30FC: ${msg.message}`);
+        showToast(`\u30A8\u30E9\u30FC: ${msg.message}`, 6e3);
+        if (!views.busy.classList.contains("hidden")) show("result");
+        else renderTabs();
+        if (!swapViews.busy.classList.contains("hidden")) showSwap("result");
+        else renderSwapTabs();
         break;
     }
   };

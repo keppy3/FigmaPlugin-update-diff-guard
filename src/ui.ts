@@ -135,12 +135,12 @@ function show(name: keyof typeof views): void {
 }
 
 let toastTimer: number | undefined;
-function showToast(msg: string): void {
+function showToast(msg: string, durationMs = 2600): void {
   const toast = $("toast");
   toast.textContent = msg;
   toast.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2600);
+  toastTimer = window.setTimeout(() => toast.classList.remove("show"), durationMs);
 }
 
 /* ---- リセット（常設・busy中はグレーアウト） ---- */
@@ -1942,7 +1942,18 @@ window.onmessage = (event: MessageEvent) => {
       onSwapMappingCacheLoaded(msg.raws);
       break;
     case "error":
-      showToast(`エラー: ${msg.message}`);
+      // 「更新中…」「配置中…」等、行ボタンを直接disabled/textContent操作している
+      // 箇所は、成功時のメッセージが来て初めてrenderTabs()等で正しい状態に
+      // 再描画される作りだった。失敗時（code.ts側で例外）はその再描画が来ず、
+      // ボタンが永久にロード中表示のまま固まる実害があった。エラー時は両モードの
+      // 結果表示を再描画して必ず正しい状態に戻す（一括処理中でbusyビューに
+      // いた場合は結果表示に戻す）。エラー内容を読む/報告する時間を確保する
+      // ため、通常のトーストより長めに表示する。
+      showToast(`エラー: ${msg.message}`, 6000);
+      if (!views.busy.classList.contains("hidden")) show("result");
+      else renderTabs();
+      if (!swapViews.busy.classList.contains("hidden")) showSwap("result");
+      else renderSwapTabs();
       break;
   }
 };
