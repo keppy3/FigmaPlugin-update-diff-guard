@@ -400,7 +400,7 @@
 
   /* ---- Tips欄（各機能のスキャン開始前に、その機能の概要を説明する） ---- */
   .tips-box {
-    display: flex; gap: 8px; padding: 10px 12px; border-radius: 10px;
+    display: flex; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-top: 40px;
     background: var(--accent-bg); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
     font-size: 11px; line-height: 1.7; color: var(--text);
   }
@@ -458,10 +458,6 @@
 
       <!-- ① スキャン前画面 -->
       <div class="setup" id="setupView">
-        <div class="tips-box">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
-          <div class="tips-body">ライブラリ更新が発生しているインスタンスを検出し、更新前後の見た目を画像比較して差分あり／なしに振り分けます。</div>
-        </div>
         <div class="setup-label">スキャン範囲</div>
         <div class="radio-group" id="radioGroup">
           <label class="radio-option active" data-scope="selection">
@@ -478,6 +474,10 @@
           </label>
         </div>
         <button class="btn-big" id="scanBtn">更新対象をスキャン</button>
+        <div class="tips-box">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+          <div class="tips-body">ライブラリ更新が発生しているインスタンスを検出し、更新前後の見た目を画像比較して差分あり／なしに振り分けます。</div>
+        </div>
       </div>
 
       <!-- 一括「更新」／一括「比較用インスタンスを配置」／一括「このまま更新」実行時のみのビジー画面 -->
@@ -556,21 +556,6 @@
 
     <div class="mode-pane hidden" id="swapApplyModePane">
       <div class="setup" id="swapPasteView">
-        <div class="tips-box">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
-          <div class="tips-body">
-            <div>スワップ先ライブラリのスキャン情報を登録すると、同じ名前のコンポーネントを持つインスタンスを自動検出します。スワップ前後の見た目を画像比較し、差分あり／なしに振り分けます。</div>
-            <div>
-              <div class="tips-steps-head">ライブラリスワップの手順</div>
-              <ul class="tips-steps">
-                <li><span class="step-num">1</span><span>スワップ先ライブラリで当プラグインを起動し、「🔍️ライブラリスキャン」でライブラリ情報を取得</span></li>
-                <li><span class="step-num">2</span><span>このファイルに戻り、「ライブラリ情報」にスキャン情報をペースト（ライブラリは複数登録可能）</span></li>
-                <li><span class="step-num">3</span><span>スキャン範囲を選択してスワップ対象のスキャン開始</span></li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
         <div class="field-head">
           <span class="setup-label">ライブラリ情報</span>
         </div>
@@ -609,6 +594,20 @@
           </label>
         </div>
         <button class="btn-big" id="swapScanBtn" disabled>スワップ対象をスキャン</button>
+        <div class="tips-box">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
+          <div class="tips-body">
+            <div>スワップ先ライブラリと同じ名前のコンポーネントを持つインスタンスを検出し、スワップ前後の見た目を画像比較して差分あり／なしに振り分けます。</div>
+            <div>
+              <div class="tips-steps-head">ライブラリスワップの手順</div>
+              <ul class="tips-steps">
+                <li><span class="step-num">1</span><span>スワップ先ライブラリで当プラグインを起動し、「🔍️ライブラリスキャン」でライブラリ情報を取得</span></li>
+                <li><span class="step-num">2</span><span>このファイルに戻り、「ライブラリ情報」にスキャン情報をペースト（ライブラリは複数登録可能）</span></li>
+                <li><span class="step-num">3</span><span>スキャン範囲を選択してスワップ対象のスキャン開始</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 一括「スワップ」／一括「比較用インスタンスを配置」／一括「このままスワップ」実行時のみのビジー画面 -->
@@ -695,6 +694,7 @@
 
     <div class="mode-pane hidden" id="swapScanModePane">
       <div class="setup" id="scanLibIntroView">
+        <button class="btn-big" id="scanLibStartBtn">公開コンポーネントをスキャン</button>
         <div class="tips-box">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
           <div class="tips-body">
@@ -702,7 +702,6 @@
             <div style="color: var(--text-muted);">※ Figmaプラグインは外部ライブラリから公開コンポーネントの情報を得ることができないため、この工程が必要となります。</div>
           </div>
         </div>
-        <button class="btn-big" id="scanLibStartBtn">公開コンポーネントをスキャン</button>
       </div>
 
       <div class="busy hidden" id="scanLibBusyView">
