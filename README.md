@@ -47,3 +47,55 @@ npm run build
 5. いずれの操作でも、対象インスタンスにFigJamの矢印が接続されている場合、操作後も矢印が繋がったままかを確認する（これがこのプロジェクト全体の存在理由となる制約。Spec.md §1参照）。
 6. Ctrl+Zで、直前の操作（更新／比較用インスタンスを配置／表示切替／プレビュー削除）だけが取り消され、それより前の操作には影響しないことを確認する（`figma.commitUndo()` によるUndo境界。Spec.md §10）。
 7. スキャン中に、対象インスタンスの1つを削除するか別の場所に移動してみる。そのインスタンスが「対象外（比較中にエラーが発生しました）」として除外されるだけで、スキャン全体が止まらずに続行することを確認する（Spec.md §10「スキャン中にファイルを編集した場合」）。
+
+## Community公開用の情報
+
+Figmaの「Publish」フローに入力する想定の文言案。
+
+- **Name**: Swap & Update Diff Check
+- **Tagline**: Preview visual diffs before you update or swap components
+- **Category**: File organization（次点: Development）
+
+### Description（日本語）
+
+```
+コンポーネントを更新・別ライブラリにスワップする前に、Before/Afterの見た目を比較して確認できるプラグインです。
+
+Figma純正の「更新」ボタンは、意図しないオーバーライドのリセットや見た目の崩れが起きても事前に気づけません。このプラグインは実際に更新・スワップした場合の見た目を仮に生成して比較し、差分の有無を確認してから適用するかどうかを判断できます。
+
+■ インスタンス更新モード
+選択範囲・現在のページ・ファイル全体から、ライブラリの最新版が存在するインスタンスを検出。Before/Afterを比較し、「見た目差分なし」「見た目差分あり」に自動振り分けします。
+
+■ ライブラリスワップモード
+別ライブラリへの移行時、コンポーネント名・バリアントで対応するコンポーネントを解決し、同様にBefore/After比較を行います。名前が一致しないインスタンスは「名前不一致」タブに一覧化されます。
+
+■ 主な機能
+・個別／一括での更新・スワップ適用
+・比較用インスタンスをキャンバス上に実際に配置して並べて確認
+・見た目差分ありの項目もメインコンポーネント名・サイズで並び替えて一括レビュー
+・スワップ先ライブラリの公開コンポーネント一覧をスキャンして対応表を作成（このプラグイン単体で完結、外部サービス連携なし）
+
+大規模なコンポーネントライブラリを運用しているチームの「知らないうちに見た目が壊れていた」を防ぐための検証ツールです。
+```
+
+### Description（English）
+
+```
+A Figma plugin that shows you a Before/After visual comparison before you update a component instance or swap it to a different library — so you can catch unintended appearance changes before they happen.
+
+Figma's built-in update button won't warn you if an override gets reset or the look changes unexpectedly. This plugin renders what the update or swap would actually look like, compares it against the current appearance, and lets you decide whether to apply it — only after confirming there's no unwanted difference.
+
+■ Instance Update mode
+Scans your selection, the current page, or the entire file for instances with a newer published version, compares Before/After, and automatically sorts them into "No visual diff" / "Visual diff" tabs.
+
+■ Library Swap mode
+When migrating to a different library, resolves the matching component by name and variant and runs the same Before/After comparison. Instances with no matching name are listed separately in a "Name mismatch" tab.
+
+■ Key features
+- Apply updates or swaps individually or in bulk
+- Place a live comparison instance directly on the canvas, right next to the original
+- Sort visual-diff items by main component name or size for faster bulk review
+- Scan a library file's published components to build a swap reference list (fully self-contained — no external services involved)
+
+A verification tool built for teams running a component library at scale, to stop finding out the design broke only after the fact.
+```
