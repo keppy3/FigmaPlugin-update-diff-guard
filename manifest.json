@@ -4,7 +4,6 @@
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
-  "icon": "assets/icon.png",
   "editorType": ["figma"],
   "documentAccess": "dynamic-page",
   "networkAccess": {
