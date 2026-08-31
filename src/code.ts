@@ -232,6 +232,69 @@ async function runScan(scope: ScopeMode): Promise<void> {
   post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
 }
 
+// §placeLatestOneと§computeAndSendDiffの両方が「対象インスタンスの隣に
+// スワップ済みクローンを、実親の生きたAuto Layoutフローから切り離して
+// 配置する」という同じことをしていたので共通化。渡すnode（ラッパーframe
+// またはインスタンスそのもの）を実親の隣に挿入し、親がAuto Layoutなら
+// layoutPositioning="ABSOLUTE"（Ignore auto layout）で切り離す。これにより
+// 実親の他のFill兄弟の分け合い計算やWrap行の組み替えを一切引き起こさない。
+function insertAsIsolatedSibling(node: FrameNode | InstanceNode, referenceInst: InstanceNode): void {
+  node.x = referenceInst.x;
+  node.y = referenceInst.y;
+  const parent = referenceInst.parent;
+  if (parent && "insertChild" in parent) {
+    const originalIndex = parent.children.indexOf(referenceInst);
+    parent.insertChild(originalIndex + 1, node);
+    node.x = referenceInst.x;
+    node.y = referenceInst.y;
+
+    const layoutParent = parent as unknown as { layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL" };
+    if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
+      node.layoutPositioning = "ABSOLUTE";
+      node.x = referenceInst.x;
+      node.y = referenceInst.y;
+    }
+  } else {
+    // 親が取得できない/挿入不可な稀なケースのみ、ページ直下に逃がす。
+    (findOwningPage(referenceInst) ?? figma.currentPage).appendChild(node);
+    node.x = 0;
+    node.y = 0;
+  }
+}
+
+// §placeLatestOne（比較用インスタンス配置）と§computeAndSendDiff（見た目
+// 差分の比較）はどちらも「対象インスタンスの隣に、実親の生きたAuto Layout
+// フローの中でswapComponent()したクローンを、隔離済みラッパーへ移す」という
+// 同じ配置をする必要があるため共通化。
+function placeIsolatedSwappedClone(
+  inst: InstanceNode,
+  latest: ComponentNode,
+  wrapperName: string
+): { wrapper: FrameNode; clone: InstanceNode } {
+  const wrapper = figma.createFrame();
+  wrapper.name = wrapperName;
+  wrapper.x = inst.x;
+  wrapper.y = inst.y;
+  wrapper.resize(inst.width, inst.height);
+  wrapper.fills = [];
+  wrapper.locked = true;
+  // figma.createFrame()はデフォルトでclipsContent=trueになる。ラッパーは
+  // instのレイアウト上のwidth/heightぴったりに作っているため、ドロップ
+  // シャドウ等その外側にはみ出す表現がある場合、そのままだとラッパーの箱の
+  // 外側として切り取られてしまい、実際のinst（切り取られず自然にはみ出た
+  // ままレンダリングされる）とは見た目が変わってしまう。
+  wrapper.clipsContent = false;
+  insertAsIsolatedSibling(wrapper, inst);
+
+  const clone = inst.clone();
+  clone.swapComponent(latest);
+  wrapper.appendChild(clone);
+  clone.x = 0;
+  clone.y = 0;
+
+  return { wrapper, clone };
+}
+
 async function computeAndSendDiff(
   inst: InstanceNode,
   latest: ComponentNode,
@@ -247,39 +310,8 @@ async function computeAndSendDiff(
   // （ひいてはFigmaクライアントのクラッシュリスク）に効いてくる。
   const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
 
-  // 比較用クローンの置き場所の変遷:
-  //   1. ページ直下に逃がす — 軽いが、親のDay/Night等の変数モードを継承
-  //      できず誤差分の原因になっていた。
-  //   2. inst.resolvedVariableModesを使い捨てアンカーフレームに明示複製 —
-  //      変数モードのAPI解決自体は通っていたはずだが、実機で「見た目は
-  //      Figma純正の比較用インスタンス配置（＝実際の親に挿入）とは異なる
-  //      誤差分」が実際に見つかった。Auto Layoutのfill containerサイジング
-  //      など、変数モード以外にも実際の親階層でしか再現できない要因がある
-  //      ため、近似では不十分と判断。
-  //   3. 現在: 実際の親の直下・同じ位置に挿入する（比較用インスタンスを
-  //      配置＝placeLatestOneと同じ考え方で、そちらは実機で正しい結果を
-  //      出している）。ページ規模のスキャンで大量のインスタンスに対して
-  //      繰り返すとFigmaクライアントが不安定になった実害があったため、
-  //      呼び出し元のスキャンループ側で一定件数ごとにイベントループへ制御を
-  //      返す形で緩和している（§runScan/handleScanSwap参照）。
-  //      layoutPositioning="ABSOLUTE"は使わない（非Auto Layout親で例外に
-  //      なる上、fill containerサイジングの再現も失われるため）ので、
-  //      Auto Layout親では完全な重なりまでは保証しない。
-  const clone = inst.clone();
-  clone.name = `${inst.name} (diff candidate)`;
-  const parent = inst.parent;
-  if (parent && "insertChild" in parent) {
-    const originalIndex = parent.children.indexOf(inst);
-    parent.insertChild(originalIndex + 1, clone);
-    clone.x = inst.x;
-    clone.y = inst.y;
-  } else {
-    // 親が取得できない/挿入不可な稀なケースのみ、ページ直下に逃がす。
-    (findOwningPage(inst) ?? figma.currentPage).appendChild(clone);
-    clone.x = 0;
-    clone.y = 0;
-  }
-  clone.swapComponent(latest);
+  // §placeLatestOneと完全に同じ配置ロジック（§placeIsolatedSwappedClone）。
+  const { wrapper, clone } = placeIsolatedSwappedClone(inst, latest, `${inst.name} (diff candidate)`);
 
   const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
 
@@ -303,9 +335,12 @@ async function computeAndSendDiff(
     });
   } finally {
     // Guaranteed even if exportAsync throws above — otherwise a failed
-    // export would leave this "(diff candidate)" node stranded on the
+    // export would leave this "(diff candidate)" wrapper stranded on the
     // canvas instead of just excluding the instance from results.
-    clone.remove();
+    // wrapperを消せばcloneも道連れに消える。§cleanupWrapperと同じ理由で
+    // ロック解除してから消す。
+    wrapper.locked = false;
+    wrapper.remove();
   }
 }
 
@@ -417,37 +452,13 @@ async function placeLatestOne(id: string): Promise<boolean> {
   // ではなく実際のエラー内容がそのままUIに出る。
   const latest = await importComponentWithRetry(item.latestKey);
 
-  const wrapper = figma.createFrame();
-  wrapper.name = `⚠ Latest Preview — ${inst.name}`;
-  wrapper.x = inst.x;
-  wrapper.y = inst.y;
-  wrapper.resize(inst.width, inst.height);
-  wrapper.fills = [];
+  // §computeAndSendDiffと完全に同じ配置ロジック（§placeIsolatedSwappedClone）
+  // を使う。こちらのラッパーだけ、ユーザーに見せる目印としてマゼンタの
+  // 太枠を追加する。
+  const { wrapper } = placeIsolatedSwappedClone(inst, latest, `⚠ Latest Preview — ${inst.name}`);
   wrapper.strokes = [{ type: "SOLID", color: { r: 1, g: 0, b: 1 } }]; // #FF00FF
   wrapper.strokeWeight = 20;
   wrapper.strokeAlign = "OUTSIDE";
-  wrapper.locked = true;
-
-  const originalIndex = parent.children.indexOf(inst);
-  parent.insertChild(originalIndex + 1, wrapper);
-
-  // 親がAuto Layoutだと、挿入した瞬間にwrapperがそのままフローに乗ってしまい、
-  // 上で設定した手動x/yが上書きされて元インスタンスの脇に配置されてしまう。
-  // wrapperはinstの現在のwidth/heightをそのままコピーした固定サイズの箱
-  // （§上のresize呼び出し）でしかないので、フローから外してもFILL等のサイジング
-  // 計算には一切影響しない — 安全に手動配置へ戻せる。
-  const layoutParent = parent as unknown as { layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL" };
-  if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
-    wrapper.layoutPositioning = "ABSOLUTE";
-    wrapper.x = inst.x;
-    wrapper.y = inst.y;
-  }
-
-  const clone = inst.clone();
-  clone.swapComponent(latest);
-  wrapper.appendChild(clone);
-  clone.x = 0;
-  clone.y = 0;
 
   wrapperStore.set(id, wrapper);
   return true;

@@ -129,25 +129,50 @@
     }
     post({ type: scanCancelled ? "scan-cancelled" : "scan-done" });
   }
-  async function computeAndSendDiff(inst, latest, resultType, mainComponentName) {
+  function insertAsIsolatedSibling(node, referenceInst) {
     var _a;
+    node.x = referenceInst.x;
+    node.y = referenceInst.y;
+    const parent = referenceInst.parent;
+    if (parent && "insertChild" in parent) {
+      const originalIndex = parent.children.indexOf(referenceInst);
+      parent.insertChild(originalIndex + 1, node);
+      node.x = referenceInst.x;
+      node.y = referenceInst.y;
+      const layoutParent = parent;
+      if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
+        node.layoutPositioning = "ABSOLUTE";
+        node.x = referenceInst.x;
+        node.y = referenceInst.y;
+      }
+    } else {
+      ((_a = findOwningPage(referenceInst)) != null ? _a : figma.currentPage).appendChild(node);
+      node.x = 0;
+      node.y = 0;
+    }
+  }
+  function placeIsolatedSwappedClone(inst, latest, wrapperName) {
+    const wrapper = figma.createFrame();
+    wrapper.name = wrapperName;
+    wrapper.x = inst.x;
+    wrapper.y = inst.y;
+    wrapper.resize(inst.width, inst.height);
+    wrapper.fills = [];
+    wrapper.locked = true;
+    wrapper.clipsContent = false;
+    insertAsIsolatedSibling(wrapper, inst);
+    const clone = inst.clone();
+    clone.swapComponent(latest);
+    wrapper.appendChild(clone);
+    clone.x = 0;
+    clone.y = 0;
+    return { wrapper, clone };
+  }
+  async function computeAndSendDiff(inst, latest, resultType, mainComponentName) {
     const beforeWidth = inst.width;
     const beforeHeight = inst.height;
     const beforeBytes = await inst.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
-    const clone = inst.clone();
-    clone.name = `${inst.name} (diff candidate)`;
-    const parent = inst.parent;
-    if (parent && "insertChild" in parent) {
-      const originalIndex = parent.children.indexOf(inst);
-      parent.insertChild(originalIndex + 1, clone);
-      clone.x = inst.x;
-      clone.y = inst.y;
-    } else {
-      ((_a = findOwningPage(inst)) != null ? _a : figma.currentPage).appendChild(clone);
-      clone.x = 0;
-      clone.y = 0;
-    }
-    clone.swapComponent(latest);
+    const { wrapper, clone } = placeIsolatedSwappedClone(inst, latest, `${inst.name} (diff candidate)`);
     const sizeChanged = beforeWidth !== clone.width || beforeHeight !== clone.height;
     try {
       const afterBytes = await clone.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
@@ -163,7 +188,8 @@
         after: afterBytes
       });
     } finally {
-      clone.remove();
+      wrapper.locked = false;
+      wrapper.remove();
     }
   }
   function cleanupWrapper(id) {
@@ -226,29 +252,10 @@
     const parent = inst.parent;
     if (!parent || !("insertChild" in parent)) return false;
     const latest = await importComponentWithRetry(item.latestKey);
-    const wrapper = figma.createFrame();
-    wrapper.name = `\u26A0 Latest Preview \u2014 ${inst.name}`;
-    wrapper.x = inst.x;
-    wrapper.y = inst.y;
-    wrapper.resize(inst.width, inst.height);
-    wrapper.fills = [];
+    const { wrapper } = placeIsolatedSwappedClone(inst, latest, `\u26A0 Latest Preview \u2014 ${inst.name}`);
     wrapper.strokes = [{ type: "SOLID", color: { r: 1, g: 0, b: 1 } }];
     wrapper.strokeWeight = 20;
     wrapper.strokeAlign = "OUTSIDE";
-    wrapper.locked = true;
-    const originalIndex = parent.children.indexOf(inst);
-    parent.insertChild(originalIndex + 1, wrapper);
-    const layoutParent = parent;
-    if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
-      wrapper.layoutPositioning = "ABSOLUTE";
-      wrapper.x = inst.x;
-      wrapper.y = inst.y;
-    }
-    const clone = inst.clone();
-    clone.swapComponent(latest);
-    wrapper.appendChild(clone);
-    clone.x = 0;
-    clone.y = 0;
     wrapperStore.set(id, wrapper);
     return true;
   }
