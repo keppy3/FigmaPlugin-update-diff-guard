@@ -1,5 +1,5 @@
 {
-  "name": "Swap & Update Diff Check (dev)",
+  "name": "Swap & Update Diff Check",
   "id": "local-dev-update-diff-guard",
   "api": "1.0.0",
   "main": "dist/code.js",

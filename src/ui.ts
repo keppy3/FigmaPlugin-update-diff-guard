@@ -1,4 +1,4 @@
-// Update Diff Guard — UI iframe (browser environment: Canvas, pixelmatch).
+// Swap & Update Diff Check — UI iframe (browser environment: Canvas, pixelmatch).
 //
 // Owns all clean/diff classification: code.ts sends raw before/after PNG
 // bytes (or a sizeChanged flag) per instance; this file runs pixelmatch,
