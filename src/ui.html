@@ -333,6 +333,14 @@
   .modal-checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; flex: none; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   .modal-actions .btn-big { width: auto; height: 32px; padding: 0 16px; font-size: 11px; }
+  .modal-actions.center { justify-content: center; }
+  .modal-loading-row { display: flex; align-items: center; gap: 9px; }
+  .modal-box.centered { align-items: center; text-align: center; }
+  .done-icon {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--success-bg); color: var(--success);
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .done-icon svg { width: 18px; height: 18px; }
 
   /* ---- ライブラリスキャン結果 ---- */
   .confirm-banner {
@@ -749,13 +757,13 @@
   </div>
 
   <div class="modal-overlay hidden" id="clearMarkersConfirmOverlay">
-    <div class="modal-box">
-      <div class="modal-title">比較用インスタンスを一括削除しますか？</div>
-      <div class="modal-body" id="clearMarkersConfirmBody"></div>
-      <div class="modal-actions">
-        <button class="ghost-btn" id="clearMarkersConfirmCancel">キャンセル</button>
-        <button class="btn-big outline-danger" id="clearMarkersConfirmOk">削除</button>
+    <div class="modal-box" id="clearMarkersConfirmBox">
+      <div class="done-icon hidden" id="clearMarkersConfirmDoneIcon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
       </div>
+      <div class="modal-title" id="clearMarkersConfirmTitle"></div>
+      <div id="clearMarkersConfirmBody"></div>
+      <div class="modal-actions center" id="clearMarkersConfirmActions"></div>
     </div>
   </div>
 

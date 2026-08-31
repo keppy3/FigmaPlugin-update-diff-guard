@@ -113,21 +113,56 @@ async function collectTargets(scope: ScopeMode): Promise<InstanceNode[]> {
 // から自然に解放される。
 const LATEST_PREVIEW_NAME_PREFIX = "⚠ Latest Preview — ";
 
-function collectMarkerFrames(node: BaseNode, out: FrameNode[]): void {
-  if (node.type === "FRAME" && node.name.startsWith(LATEST_PREVIEW_NAME_PREFIX)) {
-    out.push(node);
-    return; // 自分たちが作ったラッパーの中身なので、これ以上潜らない
-  }
-  if ("children" in node) {
-    for (const child of (node as unknown as ChildrenMixin).children) collectMarkerFrames(child, out);
-  }
-}
+// 全ページを歩く検索は大きなファイルだと長くかかるため、一定件数ごとに
+// イベントループへ制御を返してUIの応答性を保ちつつ、途中キャンセルも
+// できるようにする（§markerSearchCancelled）。
+const MARKER_SEARCH_YIELD_EVERY = 250;
+let markerSearchCancelled = false;
 
-async function findAllMarkerFrames(): Promise<FrameNode[]> {
+// メインコンポーネント自体に比較用ラッパーが紛れ込んでしまった場合（例: 配置
+// したまま削除し忘れてそのフレームをコンポーネント化してしまった等）、その
+// コンポーネントの全インスタンスが内部構造として同じ名前のフレームを
+// ミラーしてしまう。インスタンスの内部はオーバーライド対象のツリーであり、
+// そこにあるノードを削除すると「意図しないインスタンスオーバーライド」が
+// 発生してしまう（本来のデザイン変更ではないのに、そのインスタンスだけ
+// 差分ありの状態になる）ため、INSTANCEの内部には一切潜らない。コンポーネント
+// 定義自体（COMPONENT/COMPONENT_SET、INSTANCEではない）に残っている本物は
+// 通常通り検出・削除される。
+async function findAllMarkerFrames(
+  onProgress?: (pagesCompleted: number, totalPages: number) => void
+): Promise<FrameNode[] | null> {
+  markerSearchCancelled = false;
   const found: FrameNode[] = [];
-  for (const page of figma.root.children) {
+  const pages = figma.root.children;
+  const totalPages = pages.length;
+  let pagesCompleted = 0;
+  let sinceYield = 0;
+
+  async function walk(node: BaseNode): Promise<boolean> {
+    sinceYield++;
+    if (sinceYield >= MARKER_SEARCH_YIELD_EVERY) {
+      sinceYield = 0;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (markerSearchCancelled) return false;
+    }
+    if (node.type === "FRAME" && node.name.startsWith(LATEST_PREVIEW_NAME_PREFIX)) {
+      found.push(node);
+      return true; // 自分たちが作ったラッパーの中身なので、これ以上潜らない
+    }
+    if (node.type === "INSTANCE") return true;
+    if ("children" in node) {
+      for (const child of (node as unknown as ChildrenMixin).children) {
+        if (!(await walk(child))) return false;
+      }
+    }
+    return true;
+  }
+
+  for (const page of pages) {
     await page.loadAsync();
-    collectMarkerFrames(page, found);
+    if (!(await walk(page))) return null; // キャンセルされた
+    pagesCompleted++;
+    onProgress?.(pagesCompleted, totalPages);
   }
   return found;
 }
@@ -359,6 +394,10 @@ async function computeAndSendDiff(
 function cleanupWrapper(id: string): void {
   const wrapper = wrapperStore.get(id);
   if (wrapper) {
+    // ラッパーはユーザーの誤操作対策でlocked=trueにしている（§placeIsolated
+    // SwappedClone）が、Figmaは.remove()もロックで拒否する（"in remove:
+    // removing this node is not allowed"）ため、消す直前に解除する。
+    wrapper.locked = false;
     wrapper.remove();
     wrapperStore.delete(id);
   }
@@ -536,26 +575,79 @@ function handleToggleLatest(id: string): void {
   post({ type: source === "swap" ? "swap-latest-toggled" : "latest-toggled", id, visible: wrapper.visible });
 }
 
-// 「すべて削除」ボタン押下時、実際に削除する前に件数を確認モーダルで見せる
-// ための問い合わせ専用ハンドラ（削除はしない）。
-async function handleCountMarkers(): Promise<void> {
-  const nodes = await findAllMarkerFrames();
-  post({ type: "marker-clear-count", count: nodes.length });
+// 「すべて削除」ボタン押下直後に見せる確認モーダル用。今セッションで配置
+// した件数（wrapperStoreのサイズ）はページを歩かなくても即座に分かるので、
+// 全ページ検索を待たせずに表示できる。
+function handleCountSessionMarkers(): void {
+  post({ type: "session-marker-count", count: wrapperStore.size });
 }
 
-async function handleClearMarkers(): Promise<void> {
-  const nodes = await findAllMarkerFrames();
-  const count = nodes.length;
-  for (const n of nodes) n.remove();
-  // Rows whose wrapper we just deleted need to revert to the "not placed"
-  // state (place button re-enabled, eye button greyed out again) rather
-  // than staying stuck showing a toggle for a wrapper that no longer
-  // exists. Only handled for plugin-initiated deletion (this action) —
-  // detecting a wrapper deleted manually via the canvas is out of scope.
-  const clearedIds = Array.from(wrapperStore.keys());
-  wrapperStore.clear();
+function handleCancelMarkerSearch(): void {
+  markerSearchCancelled = true;
+}
+
+// includePreviousSessions=false: 今セッションで配置した分（wrapperStoreが
+// 把握している分）だけを対象にする、ページ検索不要の高速パス。
+// includePreviousSessions=true: 全ページを検索し、前回以前のセッションの
+// 置き忘れも含めて対象にする（検索中はキャンセル可能）。
+async function handleClearMarkers(includePreviousSessions: boolean): Promise<void> {
+  let targets: FrameNode[];
+
+  if (includePreviousSessions) {
+    const found = await findAllMarkerFrames((pagesCompleted, totalPages) =>
+      post({ type: "marker-search-progress", pagesCompleted, totalPages })
+    );
+    if (found === null) {
+      post({ type: "marker-search-cancelled" });
+      return;
+    }
+    targets = found;
+  } else {
+    targets = Array.from(wrapperStore.values());
+  }
+
+  // 手動削除等で既に無くなっているものは、削除実行前にここで静かに除外する
+  // （失敗として報告しない — 元々なくなっているだけなので）。これにより
+  // 「これから削除する件数」の表示と実際の削除件数が一致する。
+  const liveTargets = targets.filter((n) => !n.removed);
+  post({ type: "marker-delete-started", count: liveTargets.length });
+
+  const removedIds = new Set<string>();
+  const failures: string[] = [];
+  let sinceYield = 0;
+  for (const n of liveTargets) {
+    try {
+      // §cleanupWrapperと同じ理由でロック解除してから消す。
+      n.locked = false;
+      n.remove();
+      removedIds.add(n.id);
+    } catch (err) {
+      failures.push(`${n.name}: ${String(err)}`);
+    }
+    sinceYield++;
+    if (sinceYield >= 100) {
+      sinceYield = 0;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  // Rows whose wrapper we just deleted (or that turned out to already be
+  // gone) need to revert to the "not placed" state (place button
+  // re-enabled, eye button greyed out again) rather than staying stuck
+  // showing a toggle for a wrapper that no longer exists.
+  const clearedIds: string[] = [];
+  for (const [id, wrapper] of wrapperStore) {
+    if (removedIds.has(wrapper.id) || wrapper.removed) clearedIds.push(id);
+  }
+  for (const id of clearedIds) wrapperStore.delete(id);
+
   figma.commitUndo();
-  post({ type: "markers-cleared", count, ids: clearedIds });
+  post({ type: "markers-cleared", count: removedIds.size, ids: clearedIds });
+  if (failures.length > 0) {
+    postError(
+      `${failures.length}件の比較用インスタンスを削除できませんでした（${removedIds.size}件は削除済み）。例: ${failures[0]}`
+    );
+  }
 }
 
 // ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） -------------
@@ -1007,6 +1099,7 @@ interface IncomingMessage {
   removeLatest?: boolean;
   mappings?: LibraryScanData[];
   raws?: string[];
+  includePreviousSessions?: boolean;
 }
 
 figma.ui.onmessage = async (msg: IncomingMessage) => {
@@ -1042,11 +1135,14 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
       case "select-on-canvas":
         if (msg.ids) await handleSelectOnCanvas(msg.ids);
         break;
-      case "count-markers":
-        await handleCountMarkers();
+      case "count-session-markers":
+        handleCountSessionMarkers();
         break;
       case "clear-markers":
-        await handleClearMarkers();
+        await handleClearMarkers(!!msg.includePreviousSessions);
+        break;
+      case "cancel-marker-search":
+        handleCancelMarkerSearch();
         break;
       case "scan-library":
         await handleScanLibrary();

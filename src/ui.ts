@@ -982,7 +982,7 @@ $("placeLatestBtn").addEventListener("click", () => {
 });
 
 $("clearAllLatestBtn").addEventListener("click", () => {
-  post({ type: "count-markers" });
+  post({ type: "count-session-markers" });
 });
 
 $("forceUpdateBtn").addEventListener("click", () => {
@@ -1063,7 +1063,7 @@ function onLatestRemoved(id: string): void {
 // Rows named here revert to "not placed" so the place button re-enables,
 // instead of staying stuck offering a toggle/delete pair for a wrapper
 // that no longer exists.
-function onMarkersCleared(ids: string[] | undefined, count: number): void {
+function onMarkersCleared(ids: string[] | undefined): void {
   // 全件掃除は出所（更新／スワップ）を問わないので、両モードのlatestVisible状態を
   // まとめて片付け、両方の行リストを再描画する。
   const targetIds = ids && ids.length ? ids : [...Object.keys(latestVisible), ...Object.keys(swapLatestVisible)];
@@ -1073,7 +1073,6 @@ function onMarkersCleared(ids: string[] | undefined, count: number): void {
   });
   renderTabs();
   renderSwapTabs();
-  showToast(`比較用インスタンスを${count}件削除しました`);
 }
 
 /* ---- このまま更新／このままスワップの確認ダイアログ（両モード共有） ---- */
@@ -1134,26 +1133,113 @@ $("modalConfirm").addEventListener("click", () => {
   pendingForce = null;
 });
 
-/* ---- 比較用インスタンス一括削除の確認ダイアログ ----
-   件数を確認してから実行できるよう、クリック時点ではまだ削除せず「件数を
-   数えるだけ」のメッセージを送り、返ってきた件数をこのモーダルで見せてから
-   本当に削除するかどうかをユーザーに選んでもらう。 */
-function openClearMarkersConfirm(count: number): void {
-  if (count === 0) {
-    showToast("削除できる比較用インスタンスはありません");
-    return;
-  }
-  $("clearMarkersConfirmBody").textContent = `${count}件の比較用インスタンスをすべて削除します。よろしいですか？`;
+/* ---- 比較用インスタンス一括削除フロー ----
+   1. 押した瞬間: 今セッション分の件数（wrapperStore.size、即座に分かる）を
+      見せて確認する。チェックボックスは既定OFF（範囲を広げる操作は明示的に
+      選んでもらう）。ONで「以前のセッションのものも検索して含める」を選べる。
+   2. チェックボックスONの場合のみ: 全ページ検索（キャンセル可）。
+   3. 検索完了後（またはOFFで検索をスキップした直後）、追加の確認クリックは
+      挟まず、件数を見せながらそのまま削除を実行する。
+   4. 完了はトーストではなくダイアログで明示する。 */
+function renderClearMarkersModal(opts: { title: string; bodyHtml: string; actionsHtml: string; done?: boolean }): void {
+  $("clearMarkersConfirmTitle").textContent = opts.title;
+  $("clearMarkersConfirmBody").innerHTML = opts.bodyHtml;
+  $("clearMarkersConfirmActions").innerHTML = opts.actionsHtml;
+  $("clearMarkersConfirmDoneIcon").classList.toggle("hidden", !opts.done);
+  $("clearMarkersConfirmBox").classList.toggle("centered", !!opts.done);
   $("clearMarkersConfirmOverlay").classList.remove("hidden");
 }
 
-$("clearMarkersConfirmCancel").addEventListener("click", () => {
+function hideClearMarkersModal(): void {
   $("clearMarkersConfirmOverlay").classList.add("hidden");
-});
+}
 
-$("clearMarkersConfirmOk").addEventListener("click", () => {
-  $("clearMarkersConfirmOverlay").classList.add("hidden");
-  post({ type: "clear-markers" });
+function showClearMarkersConfirm(sessionCount: number): void {
+  // 今セッション分が0件でもブロックしない — チェックボックスをONにすれば
+  // 以前のセッション分を検索する道が残っているため。0件のときだけ「削除」
+  // ボタンを初期状態でグレーアウトし、チェックを入れたら押せるようにする。
+  const title =
+    sessionCount === 0
+      ? "今回のセッションで配置した比較用インスタンスはありません"
+      : `今回のセッションで配置した比較用インスタンス（${sessionCount}件）をすべて削除しますか？`;
+  renderClearMarkersModal({
+    title,
+    bodyHtml: `
+      <label class="modal-checkbox-row">
+        <input type="checkbox" id="clearMarkersIncludeAll">
+        <span>以前のセッションで配置した比較用インスタンスも検索し削除する</span>
+      </label>
+    `,
+    actionsHtml: `
+      <button class="ghost-btn" data-action="cancel">キャンセル</button>
+      <button class="btn-big outline-danger" data-action="confirm"${sessionCount === 0 ? " disabled" : ""}>削除</button>
+    `,
+  });
+
+  if (sessionCount === 0) {
+    const checkbox = $("clearMarkersIncludeAll") as HTMLInputElement;
+    const confirmBtn = $("clearMarkersConfirmActions").querySelector<HTMLButtonElement>('[data-action="confirm"]');
+    checkbox.addEventListener("change", () => {
+      if (confirmBtn) confirmBtn.disabled = !checkbox.checked;
+    });
+  }
+}
+
+// 検索中・削除中はどちらも「比較用インスタンスを削除しています」という
+// 同じ大枠の作業の一部（検索フェーズ→削除フェーズ）なので、タイトルは
+// 固定にし、スピナー横のメッセージだけをフェーズに応じて変える。
+const CLEAR_MARKERS_WORKING_TITLE = "比較用インスタンスを削除しています";
+
+function renderClearMarkersWorking(messageHtml: string, actionsHtml: string): void {
+  renderClearMarkersModal({
+    title: CLEAR_MARKERS_WORKING_TITLE,
+    bodyHtml: `
+      <div class="modal-loading-row">
+        <span class="spinner sm"></span>
+        <span style="font-size:11.5px;color:var(--text-muted);">${messageHtml}</span>
+      </div>
+    `,
+    actionsHtml,
+  });
+}
+
+function showClearMarkersScanning(progress?: { pagesCompleted: number; totalPages: number }): void {
+  const progressText = progress
+    ? `対象を検索しています…（${progress.pagesCompleted} / ${progress.totalPages}ページ）`
+    : "対象を検索しています…";
+  renderClearMarkersWorking(escapeHtml(progressText), `<button class="ghost-btn" data-action="cancel-search">キャンセル</button>`);
+}
+
+function showClearMarkersDeleting(count: number): void {
+  renderClearMarkersWorking(escapeHtml(`${count}件のインスタンスを削除しています…`), "");
+}
+
+function showClearMarkersDone(count: number): void {
+  renderClearMarkersModal({
+    title: `${count}件の比較用インスタンスを削除しました`,
+    bodyHtml: "",
+    actionsHtml: `<button class="btn-big" data-action="ok">OK</button>`,
+    done: true,
+  });
+}
+
+$("clearMarkersConfirmActions").addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>("[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action === "cancel" || action === "ok") {
+    hideClearMarkersModal();
+  } else if (action === "confirm") {
+    const includeAll = ($("clearMarkersIncludeAll") as HTMLInputElement | null)?.checked ?? false;
+    if (includeAll) showClearMarkersScanning();
+    post({ type: "clear-markers", includePreviousSessions: includeAll });
+  } else if (action === "cancel-search") {
+    // hideClearMarkersModal()はここでは呼ばない — code.ts側が実際に検索を
+    // 止めたのを確認してから閉じる（"marker-search-cancelled"応答で処理）。
+    // ボタンだけ押せなくして二重送信を防ぐ。
+    btn.setAttribute("disabled", "true");
+    post({ type: "cancel-marker-search" });
+  }
 });
 
 /* ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） ---- */
@@ -1955,7 +2041,7 @@ $("swapPlaceBulkBtn").addEventListener("click", () => {
 });
 
 $("swapClearAllBtn").addEventListener("click", () => {
-  post({ type: "count-markers" });
+  post({ type: "count-session-markers" });
 });
 
 $("swapForceBulkBtn").addEventListener("click", () => {
@@ -2073,10 +2159,21 @@ window.onmessage = (event: MessageEvent) => {
       onLatestRemoved(msg.id);
       break;
     case "markers-cleared":
-      onMarkersCleared(msg.ids, msg.count);
+      onMarkersCleared(msg.ids);
+      showClearMarkersDone(msg.count);
       break;
-    case "marker-clear-count":
-      openClearMarkersConfirm(msg.count);
+    case "session-marker-count":
+      showClearMarkersConfirm(msg.count);
+      break;
+    case "marker-search-progress":
+      showClearMarkersScanning({ pagesCompleted: msg.pagesCompleted, totalPages: msg.totalPages });
+      break;
+    case "marker-search-cancelled":
+      hideClearMarkersModal();
+      showToast("検索をキャンセルしました");
+      break;
+    case "marker-delete-started":
+      showClearMarkersDeleting(msg.count);
       break;
     case "library-scan-progress":
       onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
@@ -2150,6 +2247,16 @@ window.onmessage = (event: MessageEvent) => {
       else renderTabs();
       if (!swapViews.busy.classList.contains("hidden")) showSwap("result");
       else renderSwapTabs();
+      // 検索中/削除中（ロード状態）はキャンセルボタンしか出ておらず、
+      // エラー時に何も押せないまま固まってしまうため念のため閉じる。ただし
+      // 既に完了ダイアログ（部分的な失敗を伴う成功）を表示中の場合は、
+      // このエラートーストのせいでそれを消してしまわないよう閉じない。
+      if (
+        !$("clearMarkersConfirmOverlay").classList.contains("hidden") &&
+        $("clearMarkersConfirmDoneIcon").classList.contains("hidden")
+      ) {
+        hideClearMarkersModal();
+      }
       // ライブラリスキャンは中断されると再開できず、キャンセルボタンも既に
       // 終了したスキャンに対しては効かなくなる（code.ts側のループが例外で
       // 止まっているため）。busyビューに留まり続けるフリーズ状態を防ぐため、

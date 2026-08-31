@@ -333,6 +333,14 @@
   .modal-checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; flex: none; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
   .modal-actions .btn-big { width: auto; height: 32px; padding: 0 16px; font-size: 11px; }
+  .modal-actions.center { justify-content: center; }
+  .modal-loading-row { display: flex; align-items: center; gap: 9px; }
+  .modal-box.centered { align-items: center; text-align: center; }
+  .done-icon {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--success-bg); color: var(--success);
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .done-icon svg { width: 18px; height: 18px; }
 
   /* ---- ライブラリスキャン結果 ---- */
   .confirm-banner {
@@ -749,13 +757,13 @@
   </div>
 
   <div class="modal-overlay hidden" id="clearMarkersConfirmOverlay">
-    <div class="modal-box">
-      <div class="modal-title">比較用インスタンスを一括削除しますか？</div>
-      <div class="modal-body" id="clearMarkersConfirmBody"></div>
-      <div class="modal-actions">
-        <button class="ghost-btn" id="clearMarkersConfirmCancel">キャンセル</button>
-        <button class="btn-big outline-danger" id="clearMarkersConfirmOk">削除</button>
+    <div class="modal-box" id="clearMarkersConfirmBox">
+      <div class="done-icon hidden" id="clearMarkersConfirmDoneIcon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
       </div>
+      <div class="modal-title" id="clearMarkersConfirmTitle"></div>
+      <div id="clearMarkersConfirmBody"></div>
+      <div class="modal-actions center" id="clearMarkersConfirmActions"></div>
     </div>
   </div>
 
@@ -1678,7 +1686,7 @@
     post({ type: "place-latest-bulk", ids: targets });
   });
   $("clearAllLatestBtn").addEventListener("click", () => {
-    post({ type: "count-markers" });
+    post({ type: "count-session-markers" });
   });
   $("forceUpdateBtn").addEventListener("click", () => {
     const targets = diffIds.filter((id) => checked[id]);
@@ -1742,7 +1750,7 @@
     renderTabs();
     showToast(`\u300C${(_a = row == null ? void 0 : row.name) != null ? _a : id}\u300D\u306B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
-  function onMarkersCleared(ids, count) {
+  function onMarkersCleared(ids) {
     const targetIds = ids && ids.length ? ids : [...Object.keys(latestVisible), ...Object.keys(swapLatestVisible)];
     targetIds.forEach((id) => {
       delete latestVisible[id];
@@ -1750,7 +1758,6 @@
     });
     renderTabs();
     renderSwapTabs();
-    showToast(`\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092${count}\u4EF6\u524A\u9664\u3057\u307E\u3057\u305F`);
   }
   var pendingForce = null;
   function targetHasPlacedLatest(target) {
@@ -1790,20 +1797,83 @@
     }
     pendingForce = null;
   });
-  function openClearMarkersConfirm(count) {
-    if (count === 0) {
-      showToast("\u524A\u9664\u3067\u304D\u308B\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306F\u3042\u308A\u307E\u305B\u3093");
-      return;
-    }
-    $("clearMarkersConfirmBody").textContent = `${count}\u4EF6\u306E\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u3059\u3079\u3066\u524A\u9664\u3057\u307E\u3059\u3002\u3088\u308D\u3057\u3044\u3067\u3059\u304B\uFF1F`;
+  function renderClearMarkersModal(opts) {
+    $("clearMarkersConfirmTitle").textContent = opts.title;
+    $("clearMarkersConfirmBody").innerHTML = opts.bodyHtml;
+    $("clearMarkersConfirmActions").innerHTML = opts.actionsHtml;
+    $("clearMarkersConfirmDoneIcon").classList.toggle("hidden", !opts.done);
+    $("clearMarkersConfirmBox").classList.toggle("centered", !!opts.done);
     $("clearMarkersConfirmOverlay").classList.remove("hidden");
   }
-  $("clearMarkersConfirmCancel").addEventListener("click", () => {
+  function hideClearMarkersModal() {
     $("clearMarkersConfirmOverlay").classList.add("hidden");
-  });
-  $("clearMarkersConfirmOk").addEventListener("click", () => {
-    $("clearMarkersConfirmOverlay").classList.add("hidden");
-    post({ type: "clear-markers" });
+  }
+  function showClearMarkersConfirm(sessionCount) {
+    const title = sessionCount === 0 ? "\u4ECA\u56DE\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3067\u914D\u7F6E\u3057\u305F\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u306F\u3042\u308A\u307E\u305B\u3093" : `\u4ECA\u56DE\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3067\u914D\u7F6E\u3057\u305F\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\uFF08${sessionCount}\u4EF6\uFF09\u3092\u3059\u3079\u3066\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F`;
+    renderClearMarkersModal({
+      title,
+      bodyHtml: `
+      <label class="modal-checkbox-row">
+        <input type="checkbox" id="clearMarkersIncludeAll">
+        <span>\u4EE5\u524D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3067\u914D\u7F6E\u3057\u305F\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3082\u691C\u7D22\u3057\u524A\u9664\u3059\u308B</span>
+      </label>
+    `,
+      actionsHtml: `
+      <button class="ghost-btn" data-action="cancel">\u30AD\u30E3\u30F3\u30BB\u30EB</button>
+      <button class="btn-big outline-danger" data-action="confirm"${sessionCount === 0 ? " disabled" : ""}>\u524A\u9664</button>
+    `
+    });
+    if (sessionCount === 0) {
+      const checkbox = $("clearMarkersIncludeAll");
+      const confirmBtn = $("clearMarkersConfirmActions").querySelector('[data-action="confirm"]');
+      checkbox.addEventListener("change", () => {
+        if (confirmBtn) confirmBtn.disabled = !checkbox.checked;
+      });
+    }
+  }
+  var CLEAR_MARKERS_WORKING_TITLE = "\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3057\u3066\u3044\u307E\u3059";
+  function renderClearMarkersWorking(messageHtml, actionsHtml) {
+    renderClearMarkersModal({
+      title: CLEAR_MARKERS_WORKING_TITLE,
+      bodyHtml: `
+      <div class="modal-loading-row">
+        <span class="spinner sm"></span>
+        <span style="font-size:11.5px;color:var(--text-muted);">${messageHtml}</span>
+      </div>
+    `,
+      actionsHtml
+    });
+  }
+  function showClearMarkersScanning(progress) {
+    const progressText = progress ? `\u5BFE\u8C61\u3092\u691C\u7D22\u3057\u3066\u3044\u307E\u3059\u2026\uFF08${progress.pagesCompleted} / ${progress.totalPages}\u30DA\u30FC\u30B8\uFF09` : "\u5BFE\u8C61\u3092\u691C\u7D22\u3057\u3066\u3044\u307E\u3059\u2026";
+    renderClearMarkersWorking(escapeHtml(progressText), `<button class="ghost-btn" data-action="cancel-search">\u30AD\u30E3\u30F3\u30BB\u30EB</button>`);
+  }
+  function showClearMarkersDeleting(count) {
+    renderClearMarkersWorking(escapeHtml(`${count}\u4EF6\u306E\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3057\u3066\u3044\u307E\u3059\u2026`), "");
+  }
+  function showClearMarkersDone(count) {
+    renderClearMarkersModal({
+      title: `${count}\u4EF6\u306E\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3057\u307E\u3057\u305F`,
+      bodyHtml: "",
+      actionsHtml: `<button class="btn-big" data-action="ok">OK</button>`,
+      done: true
+    });
+  }
+  $("clearMarkersConfirmActions").addEventListener("click", (e) => {
+    var _a, _b;
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === "cancel" || action === "ok") {
+      hideClearMarkersModal();
+    } else if (action === "confirm") {
+      const includeAll = (_b = (_a = $("clearMarkersIncludeAll")) == null ? void 0 : _a.checked) != null ? _b : false;
+      if (includeAll) showClearMarkersScanning();
+      post({ type: "clear-markers", includePreviousSessions: includeAll });
+    } else if (action === "cancel-search") {
+      btn.setAttribute("disabled", "true");
+      post({ type: "cancel-marker-search" });
+    }
   });
   var scanLibViews = {
     intro: $("scanLibIntroView"),
@@ -2435,7 +2505,7 @@
     post({ type: "place-latest-bulk", ids: targets });
   });
   $("swapClearAllBtn").addEventListener("click", () => {
-    post({ type: "count-markers" });
+    post({ type: "count-session-markers" });
   });
   $("swapForceBulkBtn").addEventListener("click", () => {
     const targets = swapDiffIds.filter((id) => swapChecked[id]);
@@ -2545,10 +2615,21 @@
         onLatestRemoved(msg.id);
         break;
       case "markers-cleared":
-        onMarkersCleared(msg.ids, msg.count);
+        onMarkersCleared(msg.ids);
+        showClearMarkersDone(msg.count);
         break;
-      case "marker-clear-count":
-        openClearMarkersConfirm(msg.count);
+      case "session-marker-count":
+        showClearMarkersConfirm(msg.count);
+        break;
+      case "marker-search-progress":
+        showClearMarkersScanning({ pagesCompleted: msg.pagesCompleted, totalPages: msg.totalPages });
+        break;
+      case "marker-search-cancelled":
+        hideClearMarkersModal();
+        showToast("\u691C\u7D22\u3092\u30AD\u30E3\u30F3\u30BB\u30EB\u3057\u307E\u3057\u305F");
+        break;
+      case "marker-delete-started":
+        showClearMarkersDeleting(msg.count);
         break;
       case "library-scan-progress":
         onLibraryScanProgress(msg.pagesCompleted, msg.totalPages, msg.pageScanned, msg.pageTotal);
@@ -2615,6 +2696,9 @@
         else renderTabs();
         if (!swapViews.busy.classList.contains("hidden")) showSwap("result");
         else renderSwapTabs();
+        if (!$("clearMarkersConfirmOverlay").classList.contains("hidden") && $("clearMarkersConfirmDoneIcon").classList.contains("hidden")) {
+          hideClearMarkersModal();
+        }
         if (!scanLibViews.busy.classList.contains("hidden")) showScanLib("intro");
         break;
     }

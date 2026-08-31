@@ -46,20 +46,39 @@
     return found;
   }
   var LATEST_PREVIEW_NAME_PREFIX = "\u26A0 Latest Preview \u2014 ";
-  function collectMarkerFrames(node, out) {
-    if (node.type === "FRAME" && node.name.startsWith(LATEST_PREVIEW_NAME_PREFIX)) {
-      out.push(node);
-      return;
-    }
-    if ("children" in node) {
-      for (const child of node.children) collectMarkerFrames(child, out);
-    }
-  }
-  async function findAllMarkerFrames() {
+  var MARKER_SEARCH_YIELD_EVERY = 250;
+  var markerSearchCancelled = false;
+  async function findAllMarkerFrames(onProgress) {
+    markerSearchCancelled = false;
     const found = [];
-    for (const page of figma.root.children) {
+    const pages = figma.root.children;
+    const totalPages = pages.length;
+    let pagesCompleted = 0;
+    let sinceYield = 0;
+    async function walk(node) {
+      sinceYield++;
+      if (sinceYield >= MARKER_SEARCH_YIELD_EVERY) {
+        sinceYield = 0;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (markerSearchCancelled) return false;
+      }
+      if (node.type === "FRAME" && node.name.startsWith(LATEST_PREVIEW_NAME_PREFIX)) {
+        found.push(node);
+        return true;
+      }
+      if (node.type === "INSTANCE") return true;
+      if ("children" in node) {
+        for (const child of node.children) {
+          if (!await walk(child)) return false;
+        }
+      }
+      return true;
+    }
+    for (const page of pages) {
       await page.loadAsync();
-      collectMarkerFrames(page, found);
+      if (!await walk(page)) return null;
+      pagesCompleted++;
+      onProgress == null ? void 0 : onProgress(pagesCompleted, totalPages);
     }
     return found;
   }
@@ -195,6 +214,7 @@
   function cleanupWrapper(id) {
     const wrapper = wrapperStore.get(id);
     if (wrapper) {
+      wrapper.locked = false;
       wrapper.remove();
       wrapperStore.delete(id);
     }
@@ -315,18 +335,57 @@
     const source = (_a = store.get(id)) == null ? void 0 : _a.source;
     post({ type: source === "swap" ? "swap-latest-toggled" : "latest-toggled", id, visible: wrapper.visible });
   }
-  async function handleCountMarkers() {
-    const nodes = await findAllMarkerFrames();
-    post({ type: "marker-clear-count", count: nodes.length });
+  function handleCountSessionMarkers() {
+    post({ type: "session-marker-count", count: wrapperStore.size });
   }
-  async function handleClearMarkers() {
-    const nodes = await findAllMarkerFrames();
-    const count = nodes.length;
-    for (const n of nodes) n.remove();
-    const clearedIds = Array.from(wrapperStore.keys());
-    wrapperStore.clear();
+  function handleCancelMarkerSearch() {
+    markerSearchCancelled = true;
+  }
+  async function handleClearMarkers(includePreviousSessions) {
+    let targets;
+    if (includePreviousSessions) {
+      const found = await findAllMarkerFrames(
+        (pagesCompleted, totalPages) => post({ type: "marker-search-progress", pagesCompleted, totalPages })
+      );
+      if (found === null) {
+        post({ type: "marker-search-cancelled" });
+        return;
+      }
+      targets = found;
+    } else {
+      targets = Array.from(wrapperStore.values());
+    }
+    const liveTargets = targets.filter((n) => !n.removed);
+    post({ type: "marker-delete-started", count: liveTargets.length });
+    const removedIds = /* @__PURE__ */ new Set();
+    const failures = [];
+    let sinceYield = 0;
+    for (const n of liveTargets) {
+      try {
+        n.locked = false;
+        n.remove();
+        removedIds.add(n.id);
+      } catch (err) {
+        failures.push(`${n.name}: ${String(err)}`);
+      }
+      sinceYield++;
+      if (sinceYield >= 100) {
+        sinceYield = 0;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    const clearedIds = [];
+    for (const [id, wrapper] of wrapperStore) {
+      if (removedIds.has(wrapper.id) || wrapper.removed) clearedIds.push(id);
+    }
+    for (const id of clearedIds) wrapperStore.delete(id);
     figma.commitUndo();
-    post({ type: "markers-cleared", count, ids: clearedIds });
+    post({ type: "markers-cleared", count: removedIds.size, ids: clearedIds });
+    if (failures.length > 0) {
+      postError(
+        `${failures.length}\u4EF6\u306E\u6BD4\u8F03\u7528\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u3092\u524A\u9664\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\uFF08${removedIds.size}\u4EF6\u306F\u524A\u9664\u6E08\u307F\uFF09\u3002\u4F8B: ${failures[0]}`
+      );
+    }
   }
   function nodePath(node) {
     const parts = [];
@@ -621,11 +680,14 @@
         case "select-on-canvas":
           if (msg.ids) await handleSelectOnCanvas(msg.ids);
           break;
-        case "count-markers":
-          await handleCountMarkers();
+        case "count-session-markers":
+          handleCountSessionMarkers();
           break;
         case "clear-markers":
-          await handleClearMarkers();
+          await handleClearMarkers(!!msg.includePreviousSessions);
+          break;
+        case "cancel-marker-search":
+          handleCancelMarkerSearch();
           break;
         case "scan-library":
           await handleScanLibrary();
