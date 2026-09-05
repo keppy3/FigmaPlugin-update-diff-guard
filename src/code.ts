@@ -274,21 +274,30 @@ async function runScan(scope: ScopeMode): Promise<void> {
 // layoutPositioning="ABSOLUTE"（Ignore auto layout）で切り離す。これにより
 // 実親の他のFill兄弟の分け合い計算やWrap行の組み替えを一切引き起こさない。
 function insertAsIsolatedSibling(node: FrameNode | InstanceNode, referenceInst: InstanceNode): void {
-  node.x = referenceInst.x;
-  node.y = referenceInst.y;
   const parent = referenceInst.parent;
   if (parent && "insertChild" in parent) {
     const originalIndex = parent.children.indexOf(referenceInst);
-    parent.insertChild(originalIndex + 1, node);
-    node.x = referenceInst.x;
-    node.y = referenceInst.y;
-
     const layoutParent = parent as unknown as { layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL" };
     if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
+      // 実親に「生きた通常の子」としてinsertChildした直後にABSOLUTE化すると、
+      // その一瞬だけ本当に生きた子として数えられてしまう。Auto LayoutのWrap
+      // （折り返し）が有効な親（テーブル等）では、この一瞬のために行が
+      // 追加され、ABSOLUTE化した後もその行が元に戻らない実害があった。
+      // layoutPositioning="ABSOLUTE"はAuto Layoutの親を持たないと設定できない
+      // ため、使い捨てのAuto Layoutスクラッチフレームに一度挿入してABSOLUTE化
+      // を済ませてから実親へ移す。実親からは最初からABSOLUTEな子が挿入される
+      // だけになり、Wrapの折り返し計算に参加させずに済む。
+      const scratch = figma.createFrame();
+      scratch.layoutMode = "HORIZONTAL";
+      scratch.appendChild(node);
       node.layoutPositioning = "ABSOLUTE";
-      node.x = referenceInst.x;
-      node.y = referenceInst.y;
+      parent.insertChild(originalIndex + 1, node);
+      scratch.remove();
+    } else {
+      parent.insertChild(originalIndex + 1, node);
     }
+    node.x = referenceInst.x;
+    node.y = referenceInst.y;
   } else {
     // 親が取得できない/挿入不可な稀なケースのみ、ページ直下に逃がす。
     (findOwningPage(referenceInst) ?? figma.currentPage).appendChild(node);
