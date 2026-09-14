@@ -150,20 +150,22 @@
   }
   function insertAsIsolatedSibling(node, referenceInst) {
     var _a;
-    node.x = referenceInst.x;
-    node.y = referenceInst.y;
     const parent = referenceInst.parent;
     if (parent && "insertChild" in parent) {
       const originalIndex = parent.children.indexOf(referenceInst);
-      parent.insertChild(originalIndex + 1, node);
-      node.x = referenceInst.x;
-      node.y = referenceInst.y;
       const layoutParent = parent;
       if (layoutParent.layoutMode && layoutParent.layoutMode !== "NONE") {
+        const scratch = figma.createFrame();
+        scratch.layoutMode = "HORIZONTAL";
+        scratch.appendChild(node);
         node.layoutPositioning = "ABSOLUTE";
-        node.x = referenceInst.x;
-        node.y = referenceInst.y;
+        parent.insertChild(originalIndex + 1, node);
+        scratch.remove();
+      } else {
+        parent.insertChild(originalIndex + 1, node);
       }
+      node.x = referenceInst.x;
+      node.y = referenceInst.y;
     } else {
       ((_a = findOwningPage(referenceInst)) != null ? _a : figma.currentPage).appendChild(node);
       node.x = 0;
