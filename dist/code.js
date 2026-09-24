@@ -2,6 +2,7 @@
 (() => {
   // src/code.ts
   figma.showUI(__html__, { width: 420, height: 660 });
+  post({ type: "current-file-name", name: figma.root.name });
   var SWAP_MAPPING_CACHE_KEY = "swap-mapping-cache";
   (async () => {
     const cached = await figma.clientStorage.getAsync(SWAP_MAPPING_CACHE_KEY);

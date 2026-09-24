@@ -160,7 +160,12 @@ let swapScanTotal = 0;
 let swapScanDone = 0;
 const swapExpandedIds: Record<string, boolean> = {};
 let swapLastClickedIndex: { tab: "clean" | "diff"; index: number } | null = null;
-const swapViews = { paste: $("swapPasteView"), busy: $("swapBulkBusyView"), result: $("swapResultView") };
+const swapViews = {
+  paste: $("swapPasteView"),
+  busy: $("swapBulkBusyView"),
+  result: $("swapResultView"),
+  libScanBusy: $("swapLibraryScanBusyView"),
+};
 
 function post(msg: Record<string, unknown>): void {
   parent.postMessage({ pluginMessage: msg }, "*");
@@ -207,29 +212,27 @@ function resetToSetup(): void {
   show("setup");
 }
 
-/* ---- 最上部モードタブ（更新／ライブラリスワップ／ライブラリスキャン） ----
-   専用のヘッダーバー・リセットボタンは持たない。3機能とも同時に作業することは
+/* ---- 最上部モードタブ（更新／ライブラリスワップ） ----
+   専用のヘッダーバー・リセットボタンは持たない。2機能とも同時に作業することは
    想定しておらず、store/wrapperStoreをモード間で共有している都合上、異なる
    モードのスキャンが同時に走ると同一インスタンスへの書き込みが競合しかねない
    （後勝ちで片方のスキャン結果が静かに壊れる）。そのため、いずれかのモードが
-   開始画面より先に進んだ時点で他の2タブは「ロック」（グレーアウトはするが
+   開始画面より先に進んだ時点で他方のタブは「ロック」（グレーアウトはするが
    クリックは常に受け付け、確認モーダル経由で今のモードをリセットしてから
    切り替える）状態にする。 */
-type Mode = "update" | "swap-apply" | "swap-scan";
+type Mode = "update" | "swap-apply";
 let currentMode: Mode = "update";
 const modePanes: Record<Mode, HTMLElement> = {
   update: $("updateModePane"),
   "swap-apply": $("swapApplyModePane"),
-  "swap-scan": $("swapScanModePane"),
 };
 
 // そのモードがまだ「何も失うものがない」初期画面（更新のスキャン前画面／
-// スワップの貼り付け画面／ライブラリスキャンの説明画面）を表示中かどうか。
-// 真なら、そのタブを操作しても確認なしで即座に反映してよい。
+// スワップの貼り付け画面）を表示中かどうか。真なら、そのタブを操作しても
+// 確認なしで即座に反映してよい。
 function isAtModeStart(mode: Mode): boolean {
   if (mode === "update") return !views.setup.classList.contains("hidden");
   if (mode === "swap-apply") return !swapViews.paste.classList.contains("hidden");
-  if (mode === "swap-scan") return !scanLibViews.intro.classList.contains("hidden");
   return true;
 }
 
@@ -278,14 +281,12 @@ function performModeReset(resetMode: Mode, switchToMode: Mode): void {
       post({ type: "cancel-swap-scan" });
       return;
     }
-    resetSwapToPaste();
-  } else if (resetMode === "swap-scan") {
-    if (!$("scanLibBusyView").classList.contains("hidden")) {
+    if (!swapViews.libScanBusy.classList.contains("hidden")) {
       pendingSwitchAfterCancel = switchToMode !== resetMode ? switchToMode : null;
       post({ type: "cancel-library-scan" });
       return;
     }
-    showScanLib("intro");
+    resetSwapToPaste();
   }
   if (switchToMode !== resetMode) switchModePane(switchToMode);
 }
@@ -1242,19 +1243,12 @@ $("clearMarkersConfirmActions").addEventListener("click", (e) => {
   }
 });
 
-/* ---- ライブラリスキャン（スワップ先ライブラリの公開コンポーネントリストの作成） ---- */
-const scanLibViews = {
-  intro: $("scanLibIntroView"),
-  busy: $("scanLibBusyView"),
-  result: $("scanLibResultView"),
-};
-
-function showScanLib(name: keyof typeof scanLibViews): void {
-  (Object.keys(scanLibViews) as Array<keyof typeof scanLibViews>).forEach((k) =>
-    scanLibViews[k].classList.toggle("hidden", k !== name)
-  );
-  updateModeTabsDisabledState();
-}
+/* ---- ライブラリスワップ: ＋ライブラリを追加（現在のファイルをその場でスキャン） ----
+   以前は別タブ「ライブラリスキャン」でスキャン→JSONをコピー→このファイルに
+   戻って貼り付け、という2ファイル間の手作業が必要だった。ライブラリ情報は
+   swap-mapping-cache（§code.ts）でファイルをまたいで永続化されるため、その
+   往復はもう本質的に不要——「＋ライブラリを追加」を押した時点で「今開いて
+   いるファイル」をその場でスキャンし、結果を直接チップへ追加する。 */
 
 interface LibraryScanData {
   libraryName: string;
@@ -1271,27 +1265,44 @@ interface LibraryScanData {
   coverThumbnail?: string; // data URL。無ければチップ表示は頭文字アバターにフォールバック
 }
 
-let lastLibraryScanJson = "";
+// code.ts起動時に一度だけ通知される（§onCurrentFileName）。「間違って今の
+// 作業ファイルをスキャンしてしまう」誤操作を防ぐため、確認ダイアログに
+// スキャン対象のファイル名を明示するためだけに使う。
+let currentFileName = "";
 
-$("scanLibStartBtn").addEventListener("click", () => {
+function onCurrentFileName(name: string): void {
+  currentFileName = name;
+}
+
+$("swapAddLibraryBtn").addEventListener("click", () => {
+  $("swapScanConfirmFileName").textContent = currentFileName || "（ファイル名を取得できませんでした）";
+  $("swapScanConfirmOverlay").classList.remove("hidden");
+});
+
+$("swapScanConfirmCancel").addEventListener("click", () => {
+  $("swapScanConfirmOverlay").classList.add("hidden");
+});
+
+$("swapScanConfirmOk").addEventListener("click", () => {
+  $("swapScanConfirmOverlay").classList.add("hidden");
   ensureAudioUnlocked();
-  showScanLib("busy");
-  $("scanLibPageStep").textContent = "";
-  $("scanLibCompStep").textContent = "";
-  ($("scanLibPageFill").style as CSSStyleDeclaration).width = "0%";
-  ($("scanLibCompFill").style as CSSStyleDeclaration).width = "0%";
-  $("scanLibCompFill").classList.remove("indeterminate");
-  ($("scanLibCancelBtn") as HTMLButtonElement).disabled = false;
+  $("swapLibraryScanPageStep").textContent = "";
+  $("swapLibraryScanCompStep").textContent = "";
+  ($("swapLibraryScanPageFill").style as CSSStyleDeclaration).width = "0%";
+  ($("swapLibraryScanCompFill").style as CSSStyleDeclaration).width = "0%";
+  $("swapLibraryScanCompFill").classList.remove("indeterminate");
+  ($("swapLibraryScanCancelBtn") as HTMLButtonElement).disabled = false;
+  showSwap("libScanBusy");
   post({ type: "scan-library" });
 });
 
-$("scanLibCancelBtn").addEventListener("click", (e) => {
+$("swapLibraryScanCancelBtn").addEventListener("click", (e) => {
   (e.currentTarget as HTMLButtonElement).disabled = true;
   post({ type: "cancel-library-scan" });
 });
 
 function onLibraryScanCancelled(): void {
-  showScanLib("intro");
+  showSwap("paste");
   showToast("スキャンを中止しました");
   consumePendingSwitch();
 }
@@ -1303,80 +1314,78 @@ function onLibraryScanCancelled(): void {
 // 短いフェーズに入ったら実際の%表示に切り替える（§code.ts handleScanLibrary
 // 参照）。
 function onLibraryScanPageGauge(pagesCompleted: number, totalPages: number): void {
-  $("scanLibPageStep").textContent = `スキャン済みページ ${pagesCompleted} / ${totalPages}`;
-  ($("scanLibPageFill").style as CSSStyleDeclaration).width = totalPages
+  $("swapLibraryScanPageStep").textContent = `スキャン済みページ ${pagesCompleted} / ${totalPages}`;
+  ($("swapLibraryScanPageFill").style as CSSStyleDeclaration).width = totalPages
     ? `${Math.round((pagesCompleted / totalPages) * 100)}%`
     : "0%";
 }
 
 function onLibraryScanWalkProgress(pagesCompleted: number, totalPages: number, nodesVisited: number): void {
   onLibraryScanPageGauge(pagesCompleted, totalPages);
-  $("scanLibCompStep").textContent = `ノードを探索中… (${nodesVisited.toLocaleString()}件確認)`;
-  $("scanLibCompFill").classList.add("indeterminate");
+  $("swapLibraryScanCompStep").textContent = `ノードを探索中… (${nodesVisited.toLocaleString()}件確認)`;
+  $("swapLibraryScanCompFill").classList.add("indeterminate");
 }
 
 function onLibraryScanProgress(pagesCompleted: number, totalPages: number, pageScanned: number, pageTotal: number): void {
   onLibraryScanPageGauge(pagesCompleted, totalPages);
-  $("scanLibCompFill").classList.remove("indeterminate");
-  $("scanLibCompStep").textContent = `スキャン済みのメインコンポーネント ${pageScanned} / ${pageTotal}`;
-  ($("scanLibCompFill").style as CSSStyleDeclaration).width = pageTotal ? `${Math.round((pageScanned / pageTotal) * 100)}%` : "0%";
+  $("swapLibraryScanCompFill").classList.remove("indeterminate");
+  $("swapLibraryScanCompStep").textContent = `スキャン済みのメインコンポーネント ${pageScanned} / ${pageTotal}`;
+  ($("swapLibraryScanCompFill").style as CSSStyleDeclaration).width = pageTotal
+    ? `${Math.round((pageScanned / pageTotal) * 100)}%`
+    : "0%";
+}
+
+let libraryAddedBannerTimer: number | undefined;
+
+function showLibraryAddedBanner(text: string): void {
+  $("swapLibraryAddedBannerText").textContent = text;
+  $("swapLibraryAddedBanner").classList.remove("hidden");
+  clearTimeout(libraryAddedBannerTimer);
+  libraryAddedBannerTimer = window.setTimeout(() => $("swapLibraryAddedBanner").classList.add("hidden"), 4000);
+}
+
+// 追加直後のチップだけ一瞬ハイライトする（§ui.html .library-chip.new）。
+function highlightNewestChip(): void {
+  const chips = document.querySelectorAll<HTMLElement>("#swapLibraryChipList .library-chip");
+  const newest = chips[chips.length - 1];
+  if (!newest) return;
+  newest.classList.add("new");
+  window.setTimeout(() => newest.classList.remove("new"), 2000);
 }
 
 function onLibraryScanDone(data: LibraryScanData, coverThumbnail?: Uint8Array): void {
-  // 単体コンポーネントとコンポーネントセットは、スワップ対象の「差し替え単位」
-  // としては同格なので合算した1つの数字だけ見せる（内訳はJSONプレビューで見れる）。
-  $("scanLibComponentCount").textContent = String(data.components.length + data.componentSets.length);
   // カバー画像はcode.ts側からバイト列で来る（btoa等の変換はUI iframe側でしかできない
-  // ため）。data URLに変換してからJSONに埋め込み、コピーした対応表にそのまま含める。
+  // ため）。data URLに変換してからチップに埋め込む。
   if (coverThumbnail) data.coverThumbnail = dataUrlFromBytes(coverThumbnail);
-  lastLibraryScanJson = JSON.stringify(data, null, 2);
-  $("scanLibJsonPreview").textContent = lastLibraryScanJson;
-  showScanLib("result");
+
+  // 同名ライブラリの重複追加は、旧・貼り付けフォームでも弾いていたのと同じ
+  // チェック（§code.ts handleScanSwapは先に追加した方を優先するだけで
+  // 重複自体は防がないため、ここで止めておく）。
+  if (addedLibraries.some((e) => e.data.libraryName === data.libraryName)) {
+    showSwap("paste");
+    showToast(`「${data.libraryName}」は既に追加されています`, 4000);
+    return;
+  }
+
+  addedLibraries.push({ raw: JSON.stringify(data), data });
+  renderLibraryChips();
+  saveSwapMappingCache();
+  showSwap("paste");
+  highlightNewestChip();
+  showLibraryAddedBanner(`「${data.libraryName}」を追加しました`);
+
   // Figma内部で「エラーあり」判定されたコンポーネントセット（バリアント重複等）は
   // スキャン全体を止めずに個別スキップされる。件数を黙って減らすとAnalyticsの
   // 公開コンポーネント数と食い違う原因になるため、スキップがあれば明示する。
   if (data.skipped.length > 0) {
-    showToast(
-      `${data.skipped.length}件のコンポーネントをスキップしました（Figma側でエラーが検出されているため。詳細はJSONのskippedを参照）`,
-      6000
-    );
+    showToast(`${data.skipped.length}件のコンポーネントをスキップしました（Figma側でエラーが検出されているため）`, 6000);
   }
 }
-
-function copyToClipboard(text: string): Promise<void> {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  return Promise.reject(new Error("clipboard API unavailable"));
-}
-
-$("scanLibCopyBtn").addEventListener("click", () => {
-  copyToClipboard(lastLibraryScanJson)
-    .then(() => showToast("クリップボードにコピーしました"))
-    .catch(() => {
-      // Figmaプラグインのiframeサンドボックスでnavigator.clipboardが使えない
-      // 場合のフォールバック（非表示textarea + 旧execCommand('copy')）。
-      const ta = document.createElement("textarea");
-      ta.value = lastLibraryScanJson;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-        showToast("クリップボードにコピーしました");
-      } catch {
-        showToast("コピーに失敗しました。手動で選択してコピーしてください");
-      } finally {
-        document.body.removeChild(ta);
-      }
-    });
-});
 
 /* ---- ライブラリスワップ: 複数ライブラリのチップ管理 ----
-   スワップ先ライブラリの公開コンポーネントリストを複数追加できる。＋ボタンで貼り付け
-   フォームを開き、有効なJSONなら「追加」でチップに変わる。名前が衝突した
-   場合は先に追加した方を優先する（§code.ts handleScanSwap参照）。 */
+   スワップ先ライブラリの公開コンポーネントリストを複数追加できる（＋ボタンで
+   スキャンして追加、§onLibraryScanDone参照）。名前が衝突した場合は先に
+   追加した方を優先する（§code.ts handleScanSwap参照）。 */
 $("swapRadioGroup").addEventListener("change", (e) => {
   const target = e.target as HTMLInputElement;
   if (target.name !== "swapscope") return;
@@ -1386,7 +1395,7 @@ $("swapRadioGroup").addEventListener("change", (e) => {
 });
 
 interface LibraryChipEntry {
-  raw: string; // クリップボードに保存する生JSON文字列（貼り付けられたまま）
+  raw: string; // swap-mapping-cacheに保存する生JSON文字列（§saveSwapMappingCache）
   data: LibraryScanData;
 }
 let addedLibraries: LibraryChipEntry[] = [];
@@ -1434,78 +1443,8 @@ function renderLibraryChips(): void {
       saveSwapMappingCache();
     });
   });
-  $("swapCollisionNote").classList.toggle("hidden", addedLibraries.length < 2);
   updateSwapScanButtonState();
 }
-
-/* ---- ＋ライブラリを追加（貼り付けフォームの開閉） ---- */
-let pendingAddLibrary: LibraryScanData | null = null;
-let pendingAddLibraryRaw = "";
-
-function closeAddLibraryForm(): void {
-  $("swapAddLibraryForm").classList.add("hidden");
-  $("swapAddLibraryBtn").classList.remove("hidden");
-}
-
-function validateAddLibraryPaste(): void {
-  const raw = ($("swapAddLibraryTextarea") as HTMLTextAreaElement).value.trim();
-  const statusEl = $("swapAddLibraryStatus");
-  const confirmBtn = $("swapAddLibraryConfirm") as HTMLButtonElement;
-  pendingAddLibrary = null;
-  pendingAddLibraryRaw = "";
-
-  if (!raw) {
-    statusEl.textContent = "⚠ スワップ先ライブラリの公開コンポーネントリストを貼り付けてください";
-    statusEl.className = "paste-status error";
-    confirmBtn.disabled = true;
-    return;
-  }
-  let parsed: LibraryScanData | null = null;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    parsed = null;
-  }
-  if (!parsed || !Array.isArray(parsed.components) || !Array.isArray(parsed.componentSets)) {
-    statusEl.textContent = "⚠ スワップ先ライブラリの公開コンポーネントリストの形式が正しくありません";
-    statusEl.className = "paste-status error";
-    confirmBtn.disabled = true;
-    return;
-  }
-  if (addedLibraries.some((e) => e.data.libraryName === parsed!.libraryName)) {
-    statusEl.textContent = `⚠ 「${parsed.libraryName}」は既に追加されています`;
-    statusEl.className = "paste-status error";
-    confirmBtn.disabled = true;
-    return;
-  }
-  statusEl.textContent = "";
-  statusEl.className = "paste-status";
-  confirmBtn.disabled = false;
-  pendingAddLibrary = parsed;
-  pendingAddLibraryRaw = raw;
-}
-
-$("swapAddLibraryTextarea").addEventListener("input", validateAddLibraryPaste);
-
-$("swapAddLibraryBtn").addEventListener("click", () => {
-  ($("swapAddLibraryTextarea") as HTMLTextAreaElement).value = "";
-  validateAddLibraryPaste();
-  $("swapAddLibraryForm").classList.remove("hidden");
-  $("swapAddLibraryBtn").classList.add("hidden");
-  ($("swapAddLibraryTextarea") as HTMLTextAreaElement).focus();
-});
-
-$("swapAddLibraryCancel").addEventListener("click", closeAddLibraryForm);
-
-$("swapAddLibraryConfirm").addEventListener("click", () => {
-  if (!pendingAddLibrary) return;
-  addedLibraries.push({ raw: pendingAddLibraryRaw, data: pendingAddLibrary });
-  pendingAddLibrary = null;
-  pendingAddLibraryRaw = "";
-  renderLibraryChips();
-  saveSwapMappingCache();
-  closeAddLibraryForm();
-});
 
 // 前回追加していたライブラリをキャッシュから復元する。チップリストが空の
 // ときだけ埋める — 起動直後に自分で追加し始めていた場合は上書きしない。
@@ -2234,6 +2173,9 @@ window.onmessage = (event: MessageEvent) => {
     case "swap-mapping-cache-loaded":
       onSwapMappingCacheLoaded(msg.raws);
       break;
+    case "current-file-name":
+      onCurrentFileName(msg.name);
+      break;
     case "error":
       // 「更新中…」「配置中…」等、行ボタンを直接disabled/textContent操作している
       // 箇所は、成功時のメッセージが来て初めてrenderTabs()等で正しい状態に
@@ -2260,8 +2202,8 @@ window.onmessage = (event: MessageEvent) => {
       // ライブラリスキャンは中断されると再開できず、キャンセルボタンも既に
       // 終了したスキャンに対しては効かなくなる（code.ts側のループが例外で
       // 止まっているため）。busyビューに留まり続けるフリーズ状態を防ぐため、
-      // やり直せるようintroビューへ戻す。
-      if (!scanLibViews.busy.classList.contains("hidden")) showScanLib("intro");
+      // やり直せるよう貼り付け画面へ戻す。
+      if (!swapViews.libScanBusy.classList.contains("hidden")) showSwap("paste");
       break;
   }
 };

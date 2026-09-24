@@ -329,6 +329,7 @@
   }
   .modal-title { font-size: 12.5px; font-weight: 700; }
   .modal-body { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; }
+  .modal-body b { color: var(--text); }
   .modal-checkbox-row { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text); }
   .modal-checkbox-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; flex: none; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
@@ -342,38 +343,15 @@
   }
   .done-icon svg { width: 18px; height: 18px; }
 
-  /* ---- ライブラリスキャン結果 ---- */
+  /* ---- ライブラリ追加完了バナー（数秒で自動的に消える） ---- */
   .confirm-banner {
     display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 8px;
     background: var(--success-bg); color: var(--success); font-size: 11px; font-weight: 600;
   }
   .confirm-banner svg { width: 14px; height: 14px; flex: none; }
-  .stat-summary { display: flex; gap: 8px; }
-  .stat-box { flex: 0 0 auto; min-width: 110px; border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px 10px 9px; display: flex; flex-direction: column; gap: 2px; }
-  .stat-box .num { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .stat-box .label { font-size: 10px; color: var(--text-muted); }
-  .json-preview {
-    border: 1px solid var(--panel-border); border-radius: 8px; background: var(--row-hover);
-    font-family: var(--mono); font-size: 9.5px; line-height: 1.6; color: var(--text-muted);
-    padding: 10px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
-  }
 
   /* ---- ライブラリスワップ: 対応表の貼り付け ---- */
   .field-head { display: flex; align-items: center; gap: 6px; }
-  .info-btn {
-    width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--text-faint); background: none;
-    color: var(--text-faint); font-size: 9.5px; font-weight: 700; font-style: italic; font-family: Georgia, serif;
-    cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; flex: none; line-height: 1;
-  }
-  .info-btn:hover { border-color: var(--accent); color: var(--accent); }
-  textarea.paste-area {
-    width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--panel-border); border-radius: 8px;
-    background: var(--panel-bg); color: var(--text); font-family: var(--mono); font-size: 10px; line-height: 1.5;
-    padding: 9px; box-sizing: border-box;
-  }
-  textarea.paste-area:hover { border-color: var(--accent); }
-  .paste-status { font-size: 10.5px; font-weight: 600; min-height: 14px; margin-top: -4px; }
-  .paste-status.error { color: var(--danger); }
 
   /* ---- ライブラリスワップ: 複数ライブラリのチップ管理 ---- */
   .library-chip-list { display: flex; flex-direction: column; gap: 6px; }
@@ -381,6 +359,9 @@
     display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--panel-border);
     border-radius: 8px; background: var(--row-hover);
   }
+  /* 追加直後のチップを一瞬だけ強調する */
+  .library-chip.new { border-color: var(--accent); background: var(--accent-bg); animation: library-chip-pop 0.4s ease; }
+  @keyframes library-chip-pop { 0% { transform: scale(0.96); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
   .library-chip .cover {
     width: 32px; height: 32px; border-radius: 6px; flex: none; overflow: hidden;
     display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff;
@@ -400,11 +381,6 @@
     font-weight: 700; cursor: pointer;
   }
   .add-library-btn:hover { background: var(--accent-bg); border-color: var(--accent); }
-  .collision-note {
-    display: flex; gap: 7px; padding: 9px 10px; border-radius: 8px; background: var(--warning-bg);
-    color: var(--warning-strong); font-size: 10px; line-height: 1.6;
-  }
-  .collision-note svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
 
   /* ---- Tips欄（各機能のスキャン開始前に、その機能の概要を説明する） ---- */
   .tips-box {
@@ -457,7 +433,6 @@
   <div class="mode-tabs">
     <button class="mode-tab active" data-mode="update">🔄 インスタンス更新</button>
     <button class="mode-tab" data-mode="swap-apply">🔀 ライブラリスワップ</button>
-    <button class="mode-tab" data-mode="swap-scan">🔍 ライブラリスキャン</button>
   </div>
 
   <div class="panel-body">
@@ -564,27 +539,18 @@
 
     <div class="mode-pane hidden" id="swapApplyModePane">
       <div class="setup" id="swapPasteView">
+        <div class="confirm-banner hidden" id="swapLibraryAddedBanner">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>
+          <span id="swapLibraryAddedBannerText"></span>
+        </div>
+
         <div class="field-head">
-          <span class="setup-label">ライブラリ情報</span>
+          <span class="setup-label">スワップ先ライブラリ</span>
         </div>
 
         <div class="library-chip-list" id="swapLibraryChipList"></div>
 
         <button class="add-library-btn" id="swapAddLibraryBtn">＋ ライブラリを追加</button>
-
-        <div class="hidden" id="swapAddLibraryForm" style="display: flex; flex-direction: column; gap: 8px;">
-          <textarea class="paste-area" id="swapAddLibraryTextarea" spellcheck="false" placeholder="ライブラリスキャンでコピーしたライブラリ情報を貼り付け"></textarea>
-          <div class="paste-status" id="swapAddLibraryStatus"></div>
-          <div style="display: flex; gap: 8px;">
-            <button class="ghost-btn" id="swapAddLibraryCancel" style="flex: 1; justify-content: center;">キャンセル</button>
-            <button class="ghost-btn accent" id="swapAddLibraryConfirm" style="flex: 1; justify-content: center;" disabled>追加</button>
-          </div>
-        </div>
-
-        <div class="collision-note hidden" id="swapCollisionNote">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
-          <span>複数のライブラリに同じ名前のコンポーネントがある場合、<b>先に追加した方</b>が優先されます。</span>
-        </div>
 
         <div class="setup-label">スキャン範囲</div>
         <div class="radio-group" id="swapRadioGroup">
@@ -605,17 +571,32 @@
         <div class="tips-box">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
           <div class="tips-body">
-            <div>スワップ先ライブラリと同じ名前のコンポーネントを持つインスタンスを検出し、スワップ前後の見た目を画像比較して差分あり／なしに振り分けます。</div>
+            <div>スワップ先ライブラリのコンポーネントと同じ名前のインスタンスを検出し、スワップ前後の見た目を画像比較して差分あり／なしに振り分けます。</div>
             <div>
               <div class="tips-steps-head">ライブラリスワップの手順</div>
               <ul class="tips-steps">
-                <li><span class="step-num">1</span><span>スワップ先ライブラリで当プラグインを起動し、「🔍️ライブラリスキャン」でライブラリ情報を取得</span></li>
-                <li><span class="step-num">2</span><span>このファイルに戻り、「ライブラリ情報」にスキャン情報をペースト（ライブラリは複数登録可能）</span></li>
-                <li><span class="step-num">3</span><span>スキャン範囲を選択してスワップ対象のスキャン開始</span></li>
+                <li><span class="step-num">1</span><span>スワップ先ライブラリで当プラグインを起動し、「＋ライブラリを追加」でこのファイルをスキャン（ライブラリは複数登録可能）</span></li>
+                <li><span class="step-num">2</span><span>スワップ元のファイルに戻り、スキャン範囲を選択してスワップ対象のスキャン開始</span></li>
               </ul>
             </div>
+            <div style="color: var(--text-muted);">※ 複数のライブラリを追加した場合、同じ名前のコンポーネントは<b>先に追加した方</b>が優先されます。</div>
           </div>
         </div>
+      </div>
+
+      <!-- ＋ライブラリを追加→現在のファイルをスキャン中のビジー画面 -->
+      <div class="busy hidden" id="swapLibraryScanBusyView">
+        <div class="spinner"></div>
+        <div class="busy-label">ライブラリをスキャンしています</div>
+        <div class="busy-gauge">
+          <div class="busy-step" id="swapLibraryScanPageStep"></div>
+          <div class="progress-track"><div class="progress-fill" id="swapLibraryScanPageFill"></div></div>
+        </div>
+        <div class="busy-gauge">
+          <div class="busy-step" id="swapLibraryScanCompStep"></div>
+          <div class="progress-track"><div class="progress-fill" id="swapLibraryScanCompFill"></div></div>
+        </div>
+        <button class="scan-cancel-btn centered" id="swapLibraryScanCancelBtn">キャンセル</button>
       </div>
 
       <!-- 一括「スワップ」／一括「比較用インスタンスを配置」／一括「このままスワップ」実行時のみのビジー画面 -->
@@ -700,47 +681,6 @@
       </div>
     </div>
 
-    <div class="mode-pane hidden" id="swapScanModePane">
-      <div class="setup" id="scanLibIntroView">
-        <button class="btn-big" id="scanLibStartBtn">公開コンポーネントをスキャン</button>
-        <div class="tips-box">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l7 4v4c0 4.4-3 8-7 8s-7-3.6-7-8V6l7-4z"/><path d="M10 7v4M10 13.2v.1"/></svg>
-          <div class="tips-body">
-            <div>このファイル内の全ページをスキャンし、公開されているコンポーネントからライブラリ情報を作成します。<br>このライブラリ情報は、ライブラリスワップの際に必要になります。</div>
-            <div style="color: var(--text-muted);">※ Figmaプラグインは外部ライブラリから公開コンポーネントの情報を得ることができないため、この工程が必要となります。</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="busy hidden" id="scanLibBusyView">
-        <div class="spinner"></div>
-        <div class="busy-label">ライブラリをスキャンしています</div>
-        <div class="busy-gauge">
-          <div class="busy-step" id="scanLibPageStep"></div>
-          <div class="progress-track"><div class="progress-fill" id="scanLibPageFill"></div></div>
-        </div>
-        <div class="busy-gauge">
-          <div class="busy-step" id="scanLibCompStep"></div>
-          <div class="progress-track"><div class="progress-fill" id="scanLibCompFill"></div></div>
-        </div>
-        <button class="scan-cancel-btn centered" id="scanLibCancelBtn">キャンセル</button>
-      </div>
-
-      <div class="setup hidden" id="scanLibResultView">
-        <div class="confirm-banner">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>
-          <span>スキャンが完了しました</span>
-        </div>
-        <div class="stat-summary">
-          <div class="stat-box"><span class="num" id="scanLibComponentCount">0</span><span class="label">コンポーネント</span></div>
-        </div>
-        <div class="setup-label">ライブラリ情報の内容</div>
-        <div class="json-preview" id="scanLibJsonPreview"></div>
-        <button class="btn-big" id="scanLibCopyBtn">ライブラリ情報をコピー</button>
-        <div class="setup-footnote">このリストを、スワップ対象の遷移図ファイル側の「ライブラリスワップ」に貼り付けてください</div>
-      </div>
-    </div>
-
   </div>
 
   <div class="toast" id="toast"></div>
@@ -752,6 +692,17 @@
       <div class="modal-actions">
         <button class="ghost-btn" id="resetConfirmCancel">キャンセル</button>
         <button class="btn-big outline-danger" id="resetConfirmOk">リセット</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="swapScanConfirmOverlay">
+    <div class="modal-box">
+      <div class="modal-title">現在のファイルをスワップ先ライブラリとして追加しますか？</div>
+      <div class="modal-body" id="swapScanConfirmFileName"></div>
+      <div class="modal-actions center">
+        <button class="ghost-btn" id="swapScanConfirmCancel">キャンセル</button>
+        <button class="ghost-btn accent" id="swapScanConfirmOk">追加</button>
       </div>
     </div>
   </div>
