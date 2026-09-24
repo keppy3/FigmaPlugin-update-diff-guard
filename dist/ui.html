@@ -356,12 +356,22 @@
   /* ---- ライブラリスワップ: 複数ライブラリのチップ管理 ---- */
   .library-chip-list { display: flex; flex-direction: column; gap: 6px; }
   .library-chip {
-    display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--panel-border);
+    display: flex; align-items: center; gap: 7px; padding: 8px 10px 8px 6px; border: 1px solid var(--panel-border);
     border-radius: 8px; background: var(--row-hover);
   }
   /* 追加直後のチップを一瞬だけ強調する */
   .library-chip.new { border-color: var(--accent); background: var(--accent-bg); animation: library-chip-pop 0.4s ease; }
   @keyframes library-chip-pop { 0% { transform: scale(0.96); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  /* ドラッグ中の着地予定地点のプレビュー。既存のハイライト表現
+     （§.radio-option.active）と同じアクセント枠＋薄い背景に揃える。 */
+  .library-chip.dragging { border-color: var(--accent); background: var(--accent-bg); }
+  .drag-handle {
+    flex: none; width: 16px; height: 24px; display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint); cursor: grab; border-radius: 4px;
+  }
+  .drag-handle:hover { color: var(--text-muted); background: var(--divider); }
+  .drag-handle:active { cursor: grabbing; }
+  .drag-handle svg { width: 10px; height: 16px; }
   .library-chip .cover {
     width: 32px; height: 32px; border-radius: 6px; flex: none; overflow: hidden;
     display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff;
@@ -579,7 +589,7 @@
                 <li><span class="step-num">2</span><span>スワップ元のファイルに戻り、スキャン範囲を選択してスワップ対象のスキャン開始</span></li>
               </ul>
             </div>
-            <div style="color: var(--text-muted);">※ 複数のライブラリを追加した場合、同じ名前のコンポーネントは<b>先に追加した方</b>が優先されます。</div>
+            <div style="color: var(--text-muted);">※ 複数のライブラリを追加した場合、同じ名前のコンポーネントは<b>上にあるもの</b>が優先されます。つまみをドラッグして並び替えられます。</div>
           </div>
         </div>
       </div>
@@ -1919,11 +1929,13 @@
     for (let i = 0; i < name.length; i++) hash = hash * 31 + name.charCodeAt(i) | 0;
     return LIBRARY_AVATAR_COLORS[Math.abs(hash) % LIBRARY_AVATAR_COLORS.length];
   }
+  var LIBRARY_DRAG_HANDLE_SVG = `<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2" cy="2" r="1.4"/><circle cx="8" cy="2" r="1.4"/><circle cx="2" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="2" cy="14" r="1.4"/><circle cx="8" cy="14" r="1.4"/></svg>`;
   function libraryChipHtml(entry, index) {
     const count = entry.data.components.length + entry.data.componentSets.length;
     const coverInner = entry.data.coverThumbnail ? `<img src="${entry.data.coverThumbnail}" alt="">` : escapeHtml(entry.data.libraryName.slice(0, 2));
     const coverStyle = entry.data.coverThumbnail ? "" : ` style="background:${avatarColorFor(entry.data.libraryName)};"`;
-    return `<div class="library-chip">
+    return `<div class="library-chip" draggable="true" data-library-name="${escapeHtml(entry.data.libraryName)}">
+    <span class="drag-handle" title="\u30C9\u30E9\u30C3\u30B0\u3057\u3066\u512A\u5148\u9806\u4F4D\u3092\u5909\u66F4">${LIBRARY_DRAG_HANDLE_SVG}</span>
     <span class="cover"${coverStyle}>${coverInner}</span>
     <div class="info">
       <div class="lib-name" title="${escapeHtml(entry.data.libraryName)}">${escapeHtml(entry.data.libraryName)}</div>
@@ -1938,6 +1950,33 @@
   function saveSwapMappingCache() {
     post({ type: "save-swap-mapping-cache", raws: addedLibraries.map((e) => e.raw) });
   }
+  var libraryDragEl = null;
+  function wireLibraryChipDrag() {
+    const list = $("swapLibraryChipList");
+    document.querySelectorAll("#swapLibraryChipList .library-chip").forEach((row) => {
+      row.addEventListener("dragstart", () => {
+        libraryDragEl = row;
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        libraryDragEl = null;
+        const order = Array.from(list.querySelectorAll(".library-chip")).map(
+          (el) => el.dataset.libraryName
+        );
+        addedLibraries = order.map((name) => addedLibraries.find((e) => e.data.libraryName === name)).filter((e) => !!e);
+        renderLibraryChips();
+        saveSwapMappingCache();
+      });
+      row.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!libraryDragEl || libraryDragEl === row) return;
+        const rect = row.getBoundingClientRect();
+        const before = e.clientY - rect.top < rect.height / 2;
+        list.insertBefore(libraryDragEl, before ? row : row.nextSibling);
+      });
+    });
+  }
   function renderLibraryChips() {
     $("swapLibraryChipList").innerHTML = addedLibraries.map((e, i) => libraryChipHtml(e, i)).join("");
     document.querySelectorAll("#swapLibraryChipList [data-remove-library]").forEach((btn) => {
@@ -1948,6 +1987,7 @@
         saveSwapMappingCache();
       });
     });
+    wireLibraryChipDrag();
     updateSwapScanButtonState();
   }
   function onSwapMappingCacheLoaded(raws) {

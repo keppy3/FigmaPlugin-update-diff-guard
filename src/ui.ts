@@ -1409,13 +1409,19 @@ function avatarColorFor(name: string): string {
   return LIBRARY_AVATAR_COLORS[Math.abs(hash) % LIBRARY_AVATAR_COLORS.length];
 }
 
+// 6点ドットのつまみ（優先順位のドラッグ並び替え用）。
+const LIBRARY_DRAG_HANDLE_SVG = `<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2" cy="2" r="1.4"/><circle cx="8" cy="2" r="1.4"/><circle cx="2" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="2" cy="14" r="1.4"/><circle cx="8" cy="14" r="1.4"/></svg>`;
+
 function libraryChipHtml(entry: LibraryChipEntry, index: number): string {
   const count = entry.data.components.length + entry.data.componentSets.length;
   const coverInner = entry.data.coverThumbnail
     ? `<img src="${entry.data.coverThumbnail}" alt="">`
     : escapeHtml(entry.data.libraryName.slice(0, 2));
   const coverStyle = entry.data.coverThumbnail ? "" : ` style="background:${avatarColorFor(entry.data.libraryName)};"`;
-  return `<div class="library-chip">
+  // data-library-nameはドラッグ並び替え用の安定キー（§wireLibraryChipDrag参照）。
+  // 名前の重複追加は既に禁止済みなので、そのままキーとして使える。
+  return `<div class="library-chip" draggable="true" data-library-name="${escapeHtml(entry.data.libraryName)}">
+    <span class="drag-handle" title="ドラッグして優先順位を変更">${LIBRARY_DRAG_HANDLE_SVG}</span>
     <span class="cover"${coverStyle}>${coverInner}</span>
     <div class="info">
       <div class="lib-name" title="${escapeHtml(entry.data.libraryName)}">${escapeHtml(entry.data.libraryName)}</div>
@@ -1433,6 +1439,46 @@ function saveSwapMappingCache(): void {
   post({ type: "save-swap-mapping-cache", raws: addedLibraries.map((e) => e.raw) });
 }
 
+// 同じ名前のコンポーネントが複数のライブラリにある場合、先に追加した方
+// （＝addedLibraries内で先に来る方）が優先される。並び順そのものが優先順位
+// なので、ドラッグで並び替えられれば優先順位を後から調整できる。
+//
+// ドラッグ中はDOM要素をinsertBeforeで直接動かすだけにして、innerHTMLの
+// 再構築（＝ドラッグ中の要素そのものの破棄）を避ける——それをやるとネイティブ
+// Drag and Drop APIのドラッグ状態が途切れてしまう。ドロップ確定後
+// （dragend）に初めてDOMの最終的な並びからaddedLibrariesを作り直し、
+// 通常のrenderLibraryChips()で綺麗に再描画する。
+let libraryDragEl: HTMLElement | null = null;
+
+function wireLibraryChipDrag(): void {
+  const list = $("swapLibraryChipList");
+  document.querySelectorAll<HTMLElement>("#swapLibraryChipList .library-chip").forEach((row) => {
+    row.addEventListener("dragstart", () => {
+      libraryDragEl = row;
+      row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      libraryDragEl = null;
+      const order = Array.from(list.querySelectorAll<HTMLElement>(".library-chip")).map(
+        (el) => el.dataset.libraryName
+      );
+      addedLibraries = order
+        .map((name) => addedLibraries.find((e) => e.data.libraryName === name))
+        .filter((e): e is LibraryChipEntry => !!e);
+      renderLibraryChips();
+      saveSwapMappingCache();
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (!libraryDragEl || libraryDragEl === row) return;
+      const rect = row.getBoundingClientRect();
+      const before = e.clientY - rect.top < rect.height / 2;
+      list.insertBefore(libraryDragEl, before ? row : row.nextSibling);
+    });
+  });
+}
+
 function renderLibraryChips(): void {
   $("swapLibraryChipList").innerHTML = addedLibraries.map((e, i) => libraryChipHtml(e, i)).join("");
   document.querySelectorAll<HTMLButtonElement>("#swapLibraryChipList [data-remove-library]").forEach((btn) => {
@@ -1443,6 +1489,7 @@ function renderLibraryChips(): void {
       saveSwapMappingCache();
     });
   });
+  wireLibraryChipDrag();
   updateSwapScanButtonState();
 }
 
