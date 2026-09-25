@@ -222,13 +222,12 @@
       wrapperStore.delete(id);
     }
   }
-  async function handleApply(id, jump, removeLatest) {
+  async function handleApply(id, removeLatest) {
     const item = store.get(id);
     if (!item) {
       postError(`\u5BFE\u8C61\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093: ${id}`);
       return;
     }
-    if (jump) await jumpToNode(item.instance);
     let latest;
     try {
       latest = await importComponentWithRetry(item.latestKey);
@@ -660,7 +659,7 @@
           scanCancelled = true;
           break;
         case "apply":
-          if (msg.id) await handleApply(msg.id, msg.jump, msg.removeLatest);
+          if (msg.id) await handleApply(msg.id, msg.removeLatest);
           break;
         case "apply-bulk":
           if (msg.ids) await handleApplyBulk(msg.ids, msg.removeLatest);

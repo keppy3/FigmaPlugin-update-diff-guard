@@ -418,15 +418,15 @@ function cleanupWrapper(id: string): void {
   }
 }
 
-async function handleApply(id: string, jump?: boolean, removeLatest?: boolean): Promise<void> {
+async function handleApply(id: string, removeLatest?: boolean): Promise<void> {
   const item = store.get(id);
   if (!item) {
     postError(`対象が見つかりません: ${id}`);
     return;
   }
-  // For individual "このまま更新" only: jump before the write so the user
-  // sees what they're about to affect, not just what they just affected.
-  if (jump) await jumpToNode(item.instance);
+  // 適用前後でキャンバスを動かさない。個別の更新／スワップは、その瞬間の
+  // Before/Afterをその場で見届けられるよう、勝手にジャンプしない
+  // （見に行きたいときは行のジャンプボタンを使う）。
 
   // スキャン時に解決したComponentNodeをそのまま使い回さず、適用の直前に毎回
   // キーで取り直す（§StoredItem.latestKeyのコメント参照）。
@@ -1110,7 +1110,6 @@ interface IncomingMessage {
   scope?: ScopeMode;
   id?: string;
   ids?: string[];
-  jump?: boolean;
   removeLatest?: boolean;
   mappings?: LibraryScanData[];
   raws?: string[];
@@ -1127,7 +1126,7 @@ figma.ui.onmessage = async (msg: IncomingMessage) => {
         scanCancelled = true;
         break;
       case "apply":
-        if (msg.id) await handleApply(msg.id, msg.jump, msg.removeLatest);
+        if (msg.id) await handleApply(msg.id, msg.removeLatest);
         break;
       case "apply-bulk":
         if (msg.ids) await handleApplyBulk(msg.ids, msg.removeLatest);

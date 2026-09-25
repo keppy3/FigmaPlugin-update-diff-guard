@@ -1043,7 +1043,7 @@
     toastTimer = window.setTimeout(() => toast.classList.remove("show"), durationMs);
   }
   function resetToSetup() {
-    rows.clear();
+    clearRowMap(rows);
     cleanIds = [];
     diffIds = [];
     excluded = [];
@@ -1170,6 +1170,18 @@
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return `data:image/png;base64,${btoa(binary)}`;
   }
+  function imageUrlFromBytes(bytes) {
+    return URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+  }
+  function releaseRowImages(row) {
+    for (const url of [row.imageUrl, row.currentUrl, row.latestUrl]) {
+      if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+    }
+  }
+  function clearRowMap(map) {
+    map.forEach(releaseRowImages);
+    map.clear();
+  }
   function loadImageData(bytes) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
@@ -1185,9 +1197,13 @@
           return;
         }
         ctx.drawImage(img, 0, 0);
-        const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const width = canvas.width;
+        const height = canvas.height;
+        const data = ctx.getImageData(0, 0, width, height);
         URL.revokeObjectURL(url);
-        resolve({ data, width: canvas.width, height: canvas.height });
+        canvas.width = 0;
+        canvas.height = 0;
+        resolve({ data, width, height });
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
@@ -1207,8 +1223,8 @@
         mainComponentName,
         area,
         sizeMismatch: true,
-        currentUrl: msg.before ? dataUrlFromBytes(msg.before) : void 0,
-        latestUrl: msg.after ? dataUrlFromBytes(msg.after) : void 0
+        currentUrl: msg.before ? imageUrlFromBytes(msg.before) : void 0,
+        latestUrl: msg.after ? imageUrlFromBytes(msg.after) : void 0
       };
     }
     const before = await loadImageData(msg.before);
@@ -1221,14 +1237,14 @@
         mainComponentName,
         area,
         sizeMismatch: true,
-        currentUrl: dataUrlFromBytes(msg.before),
-        latestUrl: dataUrlFromBytes(msg.after)
+        currentUrl: imageUrlFromBytes(msg.before),
+        latestUrl: imageUrlFromBytes(msg.after)
       };
     }
     const { width, height } = before;
     const numDiffPixels = (0, import_pixelmatch.default)(before.data.data, after.data.data, null, width, height, { threshold: 0.1 });
     if (numDiffPixels === 0) {
-      return { id: msg.id, name: msg.name, status: "clean", mainComponentName, area, imageUrl: dataUrlFromBytes(msg.after) };
+      return { id: msg.id, name: msg.name, status: "clean", mainComponentName, area, imageUrl: imageUrlFromBytes(msg.after) };
     }
     const diffPercent = numDiffPixels / (width * height) * 100;
     return {
@@ -1238,8 +1254,8 @@
       mainComponentName,
       area,
       diffPercent,
-      currentUrl: dataUrlFromBytes(msg.before),
-      latestUrl: dataUrlFromBytes(msg.after)
+      currentUrl: imageUrlFromBytes(msg.before),
+      latestUrl: imageUrlFromBytes(msg.after)
     };
   }
   $("radioGroup").addEventListener("change", (e) => {
@@ -1259,7 +1275,7 @@
     post({ type: "cancel-scan" });
   });
   function onScanStarted(total) {
-    rows.clear();
+    clearRowMap(rows);
     cleanIds = [];
     diffIds = [];
     excluded = [];
@@ -1668,6 +1684,8 @@
   function removeResolvedId(id) {
     cleanIds = cleanIds.filter((x) => x !== id);
     diffIds = diffIds.filter((x) => x !== id);
+    const resolved = rows.get(id);
+    if (resolved) releaseRowImages(resolved);
     rows.delete(id);
     delete checked[id];
     delete latestVisible[id];
@@ -1749,7 +1767,7 @@
     if (pendingForce.kind === "single") {
       pendingForce.btn.disabled = true;
       pendingForce.btn.textContent = isSwap ? "\u30B9\u30EF\u30C3\u30D7\u4E2D\u2026" : "\u66F4\u65B0\u4E2D\u2026";
-      post({ type: "apply", id: pendingForce.id, jump: true, removeLatest });
+      post({ type: "apply", id: pendingForce.id, removeLatest });
     } else if (isSwap) {
       showSwapBulkBusy("\u30B9\u30EF\u30C3\u30D7\u3057\u3066\u3044\u307E\u3059");
       post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
@@ -2023,7 +2041,7 @@
     updateModeTabsDisabledState();
   }
   function resetSwapToPaste() {
-    swapRows.clear();
+    clearRowMap(swapRows);
     swapCleanIds = [];
     swapDiffIds = [];
     swapExcluded = [];
@@ -2039,7 +2057,7 @@
     post({ type: "cancel-swap-scan" });
   });
   function onSwapScanStarted(total) {
-    swapRows.clear();
+    clearRowMap(swapRows);
     swapCleanIds = [];
     swapDiffIds = [];
     swapExcluded = [];
@@ -2450,6 +2468,8 @@
   function removeSwapResolvedId(id) {
     swapCleanIds = swapCleanIds.filter((x) => x !== id);
     swapDiffIds = swapDiffIds.filter((x) => x !== id);
+    const resolved = swapRows.get(id);
+    if (resolved) releaseRowImages(resolved);
     swapRows.delete(id);
     delete swapChecked[id];
     delete swapLatestVisible[id];

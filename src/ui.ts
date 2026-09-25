@@ -201,7 +201,7 @@ function showToast(msg: string, durationMs = 2600): void {
 
 /* ---- リセット（常設・busy中はグレーアウト） ---- */
 function resetToSetup(): void {
-  rows.clear();
+  clearRowMap(rows);
   cleanIds = [];
   diffIds = [];
   excluded = [];
@@ -367,10 +367,35 @@ function playCompletionChime(): void {
 }
 
 /* ---- image helpers ---- */
+// 永続化するJSON（ライブラリのカバー画像）や少数のサムネイル用。件数が
+// 多くなり得る結果行の画像には使わない（§imageUrlFromBytes）。
 function dataUrlFromBytes(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return `data:image/png;base64,${btoa(binary)}`;
+}
+
+// 結果行のBefore/After画像用。base64のdata URLだと、(1)PNGの約1.33倍に膨らみ、
+// (2)同じ巨大な文字列がRowData・ミニサムネ・詳細プレビューの各<img>属性に
+// 重複して保持され、(3)1件ごとに1バイトずつ文字列連結するCPUコストもかかる。
+// 数百件のスキャンでこれが積み上がり、Figma自体がクラッシュ（Something went
+// wrong）する原因になり得た。Blob URLならPNGのバイト列は1回分しか保持されず、
+// <img>には短い参照文字列を渡すだけで済む。行が不要になったら
+// §releaseRowImagesで必ず解放すること（Blobはrevokeするまで残る）。
+function imageUrlFromBytes(bytes: Uint8Array): string {
+  return URL.createObjectURL(new Blob([bytes as unknown as Uint8Array<ArrayBuffer>], { type: "image/png" }));
+}
+
+function releaseRowImages(row: RowData): void {
+  for (const url of [row.imageUrl, row.currentUrl, row.latestUrl]) {
+    if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+  }
+}
+
+// rows/swapRowsを空にする箇所は全てこれを通し、Blob URLの解放漏れを防ぐ。
+function clearRowMap(map: Map<string, RowData>): void {
+  map.forEach(releaseRowImages);
+  map.clear();
 }
 
 function loadImageData(bytes: Uint8Array): Promise<{ data: ImageData; width: number; height: number }> {
@@ -388,9 +413,16 @@ function loadImageData(bytes: Uint8Array): Promise<{ data: ImageData; width: num
         return;
       }
       ctx.drawImage(img, 0, 0);
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const width = canvas.width;
+      const height = canvas.height;
+      const data = ctx.getImageData(0, 0, width, height);
       URL.revokeObjectURL(url);
-      resolve({ data, width: canvas.width, height: canvas.height });
+      // 大きなcanvasのバックストアはGCに任せると解放が遅れ、数百件連続で
+      // 2枚ずつ作るループで積み上がることがある。使い終わった時点で明示的に
+      // 0サイズにして即座に手放す（ImageDataは別コピーなので影響しない）。
+      canvas.width = 0;
+      canvas.height = 0;
+      resolve({ data, width, height });
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -423,8 +455,8 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
       mainComponentName,
       area,
       sizeMismatch: true,
-      currentUrl: msg.before ? dataUrlFromBytes(msg.before) : undefined,
-      latestUrl: msg.after ? dataUrlFromBytes(msg.after) : undefined,
+      currentUrl: msg.before ? imageUrlFromBytes(msg.before) : undefined,
+      latestUrl: msg.after ? imageUrlFromBytes(msg.after) : undefined,
     };
   }
 
@@ -438,8 +470,8 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
       mainComponentName,
       area,
       sizeMismatch: true,
-      currentUrl: dataUrlFromBytes(msg.before),
-      latestUrl: dataUrlFromBytes(msg.after),
+      currentUrl: imageUrlFromBytes(msg.before),
+      latestUrl: imageUrlFromBytes(msg.after),
     };
   }
 
@@ -450,7 +482,7 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
   const numDiffPixels = pixelmatch(before.data.data, after.data.data, null, width, height, { threshold: 0.1 });
 
   if (numDiffPixels === 0) {
-    return { id: msg.id, name: msg.name, status: "clean", mainComponentName, area, imageUrl: dataUrlFromBytes(msg.after) };
+    return { id: msg.id, name: msg.name, status: "clean", mainComponentName, area, imageUrl: imageUrlFromBytes(msg.after) };
   }
 
   const diffPercent = (numDiffPixels / (width * height)) * 100;
@@ -461,8 +493,8 @@ async function processDiff(msg: ScanItemMsg): Promise<RowData> {
     mainComponentName,
     area,
     diffPercent,
-    currentUrl: dataUrlFromBytes(msg.before),
-    latestUrl: dataUrlFromBytes(msg.after),
+    currentUrl: imageUrlFromBytes(msg.before),
+    latestUrl: imageUrlFromBytes(msg.after),
   };
 }
 
@@ -488,7 +520,7 @@ $("cancelScanBtn").addEventListener("click", (e) => {
 });
 
 function onScanStarted(total: number): void {
-  rows.clear();
+  clearRowMap(rows);
   cleanIds = [];
   diffIds = [];
   excluded = [];
@@ -1010,6 +1042,8 @@ $("diffSelectCanvas").addEventListener("click", () => {
 function removeResolvedId(id: string): void {
   cleanIds = cleanIds.filter((x) => x !== id);
   diffIds = diffIds.filter((x) => x !== id);
+  const resolved = rows.get(id);
+  if (resolved) releaseRowImages(resolved);
   rows.delete(id);
   delete checked[id];
   delete latestVisible[id];
@@ -1121,9 +1155,7 @@ $("modalConfirm").addEventListener("click", () => {
   if (pendingForce.kind === "single") {
     pendingForce.btn.disabled = true;
     pendingForce.btn.textContent = isSwap ? "スワップ中…" : "更新中…";
-    // Jump straight there so the user immediately sees what they just
-    // confirmed updating — code.ts does this before the write itself.
-    post({ type: "apply", id: pendingForce.id, jump: true, removeLatest });
+    post({ type: "apply", id: pendingForce.id, removeLatest });
   } else if (isSwap) {
     showSwapBulkBusy("スワップしています");
     post({ type: "apply-bulk", ids: pendingForce.ids, removeLatest });
@@ -1536,7 +1568,7 @@ function showSwap(name: keyof typeof swapViews): void {
 }
 
 function resetSwapToPaste(): void {
-  swapRows.clear();
+  clearRowMap(swapRows);
   swapCleanIds = [];
   swapDiffIds = [];
   swapExcluded = [];
@@ -1554,7 +1586,7 @@ $("swapCancelScanBtn").addEventListener("click", (e) => {
 });
 
 function onSwapScanStarted(total: number): void {
-  swapRows.clear();
+  clearRowMap(swapRows);
   swapCleanIds = [];
   swapDiffIds = [];
   swapExcluded = [];
@@ -2050,6 +2082,8 @@ $("swapDiffSelectCanvas").addEventListener("click", () => {
 function removeSwapResolvedId(id: string): void {
   swapCleanIds = swapCleanIds.filter((x) => x !== id);
   swapDiffIds = swapDiffIds.filter((x) => x !== id);
+  const resolved = swapRows.get(id);
+  if (resolved) releaseRowImages(resolved);
   swapRows.delete(id);
   delete swapChecked[id];
   delete swapLatestVisible[id];
